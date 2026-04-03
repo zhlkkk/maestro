@@ -1,0 +1,74 @@
+name: "Superpowers + Compound Workflow"
+description: "Full-cycle feature development: brainstorm -> lock knowledge -> deep plan -> TDD execute -> review -> compound learnings."
+
+agents:
+  Facilitator:
+    description: "Project lead responsible for requirements, architecture, and knowledge"
+    driver: claude-code
+    system_prompt: |
+      You are a Compound Engineering project facilitator. Your role is to
+      think deeply about requirements, architecture, and knowledge management.
+      Always produce structured, actionable output.
+  Engineer:
+    description: "Full-stack engineer focused on code implementation"
+    driver: claude-code
+    system_prompt: |
+      You are a senior software engineer. Your role is to implement code
+      following the plan exactly. Use TDD: write tests first, then implement.
+      Fix all test failures before completing.
+  Reviewer:
+    description: "QA gatekeeper for code quality and standards"
+    driver: claude-code
+    system_prompt: |
+      You are a strict code reviewer. Check for bugs, security issues,
+      missing tests, and deviation from the plan. Be specific in feedback.
+
+phases:
+  Brainstorm:
+    agent: Facilitator
+    prompt_file: prompts/brainstorm.md
+    output_file: BRAINSTORM_RESULT.md
+    next: LockKnowledge
+
+  LockKnowledge:
+    agent: Facilitator
+    prompt_file: prompts/lock-knowledge.md
+    output_file: KNOWLEDGE_LOCKED.md
+    next: DeepPlan
+
+  DeepPlan:
+    agent: Facilitator
+    prompt_file: prompts/deep-plan.md
+    output_file: PLAN.md
+    timeout_s: 1800
+    next: Execute
+
+  Execute:
+    agent: Engineer
+    prompt_file: prompts/execute-plan.md
+    output_file: EXECUTION_DONE.md
+    timeout_s: 1800
+    next: Review
+
+  Review:
+    agent: Reviewer
+    prompt_file: prompts/review.md
+    output_file: REVIEW_RESULT.md
+    next_if:
+      approved: CompoundLearnings
+      rejected: Execute
+    max_retries: 3
+
+  CompoundLearnings:
+    agent: Facilitator
+    prompt_file: prompts/compound-learnings.md
+    output_file: LEARNINGS_COMPOUNDED.md
+    next: Done
+
+  Done:
+    type: final
+
+handoff_routing:
+  Facilitator: [Engineer]
+  Engineer: [Reviewer, Facilitator]
+  Reviewer: [Engineer, Facilitator]

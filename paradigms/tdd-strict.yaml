@@ -1,0 +1,35 @@
+name: "TDD Strict"
+description: "Write failing tests first, then implement, then review. Review rejection loops back to implementation."
+
+agents:
+  TestWriter:
+    description: "Writes failing tests for the given task"
+    driver: claude-code
+  Implementer:
+    description: "Implements code to make tests pass"
+    driver: claude-code
+  Reviewer:
+    description: "Reviews the implementation for quality and correctness"
+    driver: claude-code
+
+phases:
+  WriteTests:
+    agent: TestWriter
+    prompt_file: prompts/write-tests.md
+    output_file: TESTS_WRITTEN.md
+    next: Implement
+  Implement:
+    agent: Implementer
+    prompt_file: prompts/implement.md
+    output_file: IMPLEMENTATION_DONE.md
+    next: Review
+  Review:
+    agent: Reviewer
+    prompt_file: prompts/review.md
+    output_file: REVIEW_RESULT.md
+    next_if:
+      approved: Done
+      rejected: Implement
+    max_retries: 3
+  Done:
+    type: final
