@@ -1,5 +1,6 @@
 import type { AgentDriverFn } from "./types.js";
 import { runAgent as claudeRunAgent } from "./claude.js";
+import { runCodexAgent } from "./codex.js";
 
 type DriverFactory = () => AgentDriverFn;
 
@@ -50,3 +51,4 @@ export function validateDrivers(driverNames: string[]): void {
 
 // Register built-in drivers
 registerDriver("claude-code", () => claudeRunAgent);
+registerDriver("codex", () => runCodexAgent);
