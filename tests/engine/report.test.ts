@@ -64,6 +64,55 @@ describe("generateReport", () => {
     expect(content).toContain("Missing output file");
   });
 
+  test("includes cost summary when usage data is present", () => {
+    const eventsPath = logEvents("cost-run", [
+      { timestamp: "2026-04-03T12:00:00Z", type: "PIPELINE_START", data: { paradigm: "TDD", task: "Add auth" } },
+      { timestamp: "2026-04-03T12:00:01Z", type: "PHASE_START", phase: "WriteTests", data: { agent: "A" } },
+      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_COMPLETE", phase: "WriteTests", data: { status: "complete", duration_ms: 29000, tokens_in: 1500, tokens_out: 800, cost_usd: 0.0123, model_used: "claude-sonnet-4-20250514" } },
+      { timestamp: "2026-04-03T12:00:31Z", type: "PHASE_START", phase: "Implement", data: { agent: "B" } },
+      { timestamp: "2026-04-03T12:01:00Z", type: "PHASE_COMPLETE", phase: "Implement", data: { status: "complete", duration_ms: 29000, tokens_in: 2000, tokens_out: 1200, cost_usd: 0.0456, model_used: "claude-sonnet-4-20250514" } },
+      { timestamp: "2026-04-03T12:01:01Z", type: "PIPELINE_COMPLETE", data: { final_phase: "Done" } },
+    ]);
+
+    const reportPath = generateReport(eventsPath, testDir, "cost-run");
+    const content = readFileSync(reportPath, "utf-8");
+
+    expect(content).toContain("## Cost Summary");
+    expect(content).toContain("| Phase | Model | Tokens In | Tokens Out | Cost |");
+    expect(content).toContain("claude-sonnet-4-20250514");
+    expect(content).toContain("1500");
+    expect(content).toContain("800");
+    expect(content).toContain("$0.0123");
+    expect(content).toContain("2000");
+    expect(content).toContain("1200");
+    expect(content).toContain("$0.0456");
+    // Total row
+    expect(content).toContain("**Total**");
+    expect(content).toContain("3500");
+    expect(content).toContain("2000");
+    expect(content).toContain("$0.0579");
+  });
+
+  test("handles missing usage data gracefully with N/A", () => {
+    const eventsPath = logEvents("partial-cost-run", [
+      { timestamp: "2026-04-03T12:00:00Z", type: "PIPELINE_START", data: { paradigm: "TDD", task: "Add auth" } },
+      { timestamp: "2026-04-03T12:00:01Z", type: "PHASE_START", phase: "WriteTests", data: { agent: "A" } },
+      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_COMPLETE", phase: "WriteTests", data: { status: "complete", duration_ms: 29000, cost_usd: 0.05, model_used: "claude-sonnet-4-20250514" } },
+      { timestamp: "2026-04-03T12:00:31Z", type: "PHASE_START", phase: "Implement", data: { agent: "B" } },
+      { timestamp: "2026-04-03T12:01:00Z", type: "PHASE_COMPLETE", phase: "Implement", data: { status: "complete", duration_ms: 29000 } },
+      { timestamp: "2026-04-03T12:01:01Z", type: "PIPELINE_COMPLETE", data: { final_phase: "Done" } },
+    ]);
+
+    const reportPath = generateReport(eventsPath, testDir, "partial-cost-run");
+    const content = readFileSync(reportPath, "utf-8");
+
+    expect(content).toContain("## Cost Summary");
+    // WriteTests has model but no tokens
+    expect(content).toContain("| WriteTests | claude-sonnet-4-20250514 | N/A | N/A | $0.0500 |");
+    // Implement has no usage data at all
+    expect(content).toContain("| Implement | N/A | N/A | N/A | N/A |");
+  });
+
   test("shows retries in report", () => {
     const eventsPath = logEvents("retry-run", [
       { timestamp: "2026-04-03T12:00:00Z", type: "PIPELINE_START", data: { paradigm: "TDD", task: "test" } },
