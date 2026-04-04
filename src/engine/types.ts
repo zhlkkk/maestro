@@ -5,6 +5,7 @@ export interface AgentConfig {
   system_prompt_file?: string;
   system_prompt?: string;
   tools?: string[];
+  model?: string;
 }
 
 /** Configuration for a single phase in the paradigm */
@@ -18,6 +19,7 @@ export interface PhaseConfig {
   max_retries?: number;
   /** Set to "final" for terminal states */
   type?: "final";
+  model?: string;
 }
 
 /** Top-level paradigm configuration parsed from YAML */

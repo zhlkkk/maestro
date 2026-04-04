@@ -108,6 +108,7 @@ export async function runPipeline(
         // Add system prompt from agent config
         const agentConfig = config.agents[phase.agent];
         const systemPrompt = agentConfig?.system_prompt ?? undefined;
+        const resolvedModel = phase.model ?? agentConfig?.model ?? undefined;
         const driverName = agentConfig?.driver ?? "claude-code";
         const driver = getDriver(driverName);
 
@@ -129,6 +130,7 @@ export async function runPipeline(
           for await (const event of driver(prompt, worktreePath, {
             systemPrompt,
             allowedTools: agentConfig?.tools,
+            model: resolvedModel,
             abortController,
           })) {
             switch (event.type) {

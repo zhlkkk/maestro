@@ -142,4 +142,48 @@ phases:
 `);
     expect(config.maestro_version).toBe("1");
   });
+
+  test("parses phase-level model field", () => {
+    const config = parseParadigm(`
+name: "ModelRouting"
+agents:
+  Worker:
+    driver: claude-code
+phases:
+  DoWork:
+    agent: Worker
+    output_file: RESULT.md
+    model: "gpt-4o"
+    next: Done
+  Done:
+    type: final
+`);
+    expect(config.phases.DoWork?.model).toBe("gpt-4o");
+    expect(config.phases.Done?.model).toBeUndefined();
+  });
+
+  test("parses agent-level model field", () => {
+    const config = parseParadigm(`
+name: "AgentModel"
+agents:
+  Worker:
+    driver: claude-code
+    model: "claude-sonnet"
+phases:
+  DoWork:
+    agent: Worker
+    output_file: RESULT.md
+    next: Done
+  Done:
+    type: final
+`);
+    expect(config.agents.Worker?.model).toBe("claude-sonnet");
+  });
+
+  test("backward compat: paradigm without model fields parses correctly", () => {
+    const config = parseParadigm(MINIMAL_PARADIGM);
+    expect(config.agents.Worker?.model).toBeUndefined();
+    expect(config.phases.DoWork?.model).toBeUndefined();
+    expect(config.phases.Done?.model).toBeUndefined();
+  });
 });

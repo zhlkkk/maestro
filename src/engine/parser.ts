@@ -74,6 +74,7 @@ function parseAgents(raw: unknown): Record<string, import("./types.js").AgentCon
       system_prompt_file: optionalString(a, "system_prompt_file"),
       system_prompt: optionalString(a, "system_prompt"),
       tools: Array.isArray(a.tools) ? a.tools.map(String) : undefined,
+      model: optionalString(a, "model"),
     };
   }
   return agents;
@@ -99,6 +100,7 @@ function parsePhases(
       timeout_s: typeof p.timeout_s === "number" ? p.timeout_s : undefined,
       max_retries: typeof p.max_retries === "number" ? p.max_retries : undefined,
       type: p.type === "final" ? "final" : undefined,
+      model: optionalString(p, "model"),
     };
 
     if (p.prompt_file && typeof p.prompt_file === "string") {
