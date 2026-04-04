@@ -66,14 +66,16 @@ export async function runPipeline(
   try {
     const { machine } = translateToMachine(config);
 
+    // Track worktree state per phase for multi-path handoff
+    const phaseWorktrees = new Map<string, string>();
+    const phaseOutputs = new Map<string, string>();
+
     // Build real actor implementations for each phase
     const actors: Record<string, any> = {};
 
-    for (const [phaseName, phase] of Object.entries(config.phases)) {
-      if (phase.type === "final") continue;
-
-      const actorName = `run_${phaseName}`;
-      actors[actorName] = fromPromise(async (): Promise<PhaseOutput> => {
+    // Helper to create a phase actor
+    const createPhaseActor = (phaseName: string, phase: typeof config.phases[string]) => {
+      return fromPromise(async (): Promise<PhaseOutput> => {
         // Check abort signal
         if (options.abortSignal?.aborted) {
           throw new Error("Pipeline aborted");
@@ -169,10 +171,12 @@ export async function runPipeline(
           throw new Error(parsed.error);
         }
 
-        // Track for next phase handoff
+        // Track for next phase handoff (both single-path and multi-path)
         lastPhaseWorktree = worktreePath;
         lastPhaseOutputFile = phase.output_file;
         lastPhaseOutputContent = parsed.rawContent;
+        phaseWorktrees.set(phaseName, worktreePath);
+        phaseOutputs.set(phaseName, parsed.rawContent);
 
         const durationMs = Date.now() - startTime;
         emit("PHASE_COMPLETE", phaseName, {
@@ -182,6 +186,22 @@ export async function runPipeline(
 
         return { status: parsed.status };
       });
+    };
+
+    for (const [phaseName, phase] of Object.entries(config.phases)) {
+      if (phase.type === "final") continue;
+
+      if (phase.type === "fork" && phase.fork_phases) {
+        // Fork phase: create actors for each child, not for the fork itself
+        for (const childName of phase.fork_phases) {
+          const childPhase = config.phases[childName];
+          if (!childPhase) continue;
+          actors[`run_${childName}`] = createPhaseActor(childName, childPhase);
+        }
+        continue;
+      }
+
+      actors[`run_${phaseName}`] = createPhaseActor(phaseName, phase);
     }
 
     // Provide real actors to the machine
