@@ -5,7 +5,7 @@ import { createWorktreeManager, cleanupStaleWorktrees } from "../sandbox/worktre
 import { copyHandoff } from "../sandbox/handoff.js";
 import { assemblePrompt, readOutputFile } from "../sandbox/prompt.js";
 import { parseOutputFile } from "./output-parser.js";
-import { runAgent } from "../driver/claude.js";
+import { getDriver, validateDrivers } from "../driver/registry.js";
 import type { MaestroEvent, MaestroEventType } from "../types.js";
 
 export interface RunnerOptions {
@@ -45,6 +45,12 @@ export async function runPipeline(
     events.push(event);
     options.onEvent?.(event);
   };
+
+  // Validate all driver references before starting (fail fast)
+  const driverNames = [...new Set(
+    Object.values(config.agents).map((a) => a.driver ?? "claude-code")
+  )];
+  validateDrivers(driverNames);
 
   // Clean up stale worktrees from previous crashed runs
   cleanupStaleWorktrees(options.repoRoot);
@@ -102,6 +108,8 @@ export async function runPipeline(
         // Add system prompt from agent config
         const agentConfig = config.agents[phase.agent];
         const systemPrompt = agentConfig?.system_prompt ?? undefined;
+        const driverName = agentConfig?.driver ?? "claude-code";
+        const driver = getDriver(driverName);
 
         // 4. Run agent with timeout
         const timeoutMs = (phase.timeout_s ?? DEFAULT_TIMEOUT_S) * 1000;
@@ -118,7 +126,7 @@ export async function runPipeline(
         }, timeoutMs);
 
         try {
-          for await (const event of runAgent(prompt, worktreePath, {
+          for await (const event of driver(prompt, worktreePath, {
             systemPrompt,
             allowedTools: agentConfig?.tools,
             abortController,
