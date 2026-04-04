@@ -1,0 +1,42 @@
+name: "Bug Investigation"
+description: "Systematic bug investigation: reproduce, diagnose, fix, verify"
+
+agents:
+  Investigator:
+    description: "Systematic bug investigator who reproduces, diagnoses, fixes, and verifies issues"
+    driver: claude-code
+    system_prompt: |
+      You are a systematic bug investigator. You analyze bug reports,
+      reproduce issues, diagnose root causes, implement fixes, and verify
+      the fix resolves the issue without regressions.
+
+phases:
+  Reproduce:
+    agent: Investigator
+    prompt_file: prompts/reproduce.md
+    output_file: REPRODUCE_RESULT.md
+    next: Diagnose
+
+  Diagnose:
+    agent: Investigator
+    prompt_file: prompts/diagnose.md
+    output_file: DIAGNOSIS.md
+    next: Fix
+
+  Fix:
+    agent: Investigator
+    prompt_file: prompts/fix-bug.md
+    output_file: FIX_RESULT.md
+    next: Verify
+
+  Verify:
+    agent: Investigator
+    prompt_file: prompts/verify-fix.md
+    output_file: VERIFY_RESULT.md
+    next_if:
+      verified: Done
+      failed: Fix
+    max_retries: 2
+
+  Done:
+    type: final
