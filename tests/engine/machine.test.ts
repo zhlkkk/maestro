@@ -7,10 +7,23 @@ function buildAndRun(yaml: string, phaseResults: Record<string, PhaseOutput>) {
   const config = parseParadigm(yaml);
   const { machine } = translateToMachine(config);
 
-  // Build actor overrides
+  // Build actor overrides for regular phases AND fork child phases
   const actors: Record<string, any> = {};
   for (const phaseName of Object.keys(config.phases)) {
-    if (config.phases[phaseName]?.type === "final") continue;
+    const phase = config.phases[phaseName]!;
+    if (phase.type === "final") continue;
+    if (phase.type === "fork") {
+      // Fork children get their own actors
+      for (const childName of phase.fork_phases ?? []) {
+        const actorName = `run_${childName}`;
+        actors[actorName] = fromPromise(async () => {
+          const result = phaseResults[childName];
+          if (!result) throw new Error(`No result provided for fork child ${childName}`);
+          return result;
+        });
+      }
+      continue;
+    }
     const actorName = `run_${phaseName}`;
     actors[actorName] = fromPromise(async () => {
       const result = phaseResults[phaseName];
@@ -323,5 +336,133 @@ phases:
     // Machine should be created without errors
     expect(machine).toBeDefined();
     expect(machine.id).toBe("Combined-Workflow");
+  });
+
+  // Fork-join tests
+  test("fork phase with 2 children completes when both finish", async () => {
+    const actor = buildAndRun(
+      `
+name: "ForkTest"
+agents:
+  Worker:
+    driver: test
+phases:
+  Analyze:
+    agent: Worker
+    output_file: ANALYSIS.md
+    next: ParallelFix
+  ParallelFix:
+    type: fork
+    phases: [FixFE, FixBE]
+    next: Verify
+  FixFE:
+    agent: Worker
+    output_file: FIX_FE.md
+  FixBE:
+    agent: Worker
+    output_file: FIX_BE.md
+  Verify:
+    agent: Worker
+    output_file: VERIFY.md
+    next: Done
+  Done:
+    type: final
+`,
+      {
+        Analyze: { status: "complete" },
+        FixFE: { status: "fixed" },
+        FixBE: { status: "fixed" },
+        Verify: { status: "verified" },
+      }
+    );
+
+    actor.start();
+    const snapshot = await waitFor(actor, (s) => s.status === "done", { timeout: 5000 });
+    expect(snapshot.value).toBe("Done");
+    expect(snapshot.context.parallelOutputs.FixFE).toEqual({ status: "fixed" });
+    expect(snapshot.context.parallelOutputs.FixBE).toEqual({ status: "fixed" });
+  });
+
+  test("fork child error transitions to child failed state (parallel still completes)", async () => {
+    const config = parseParadigm(`
+name: "ForkError"
+agents:
+  Worker:
+    driver: test
+phases:
+  Fork:
+    type: fork
+    phases: [ChildA, ChildB]
+    next: Done
+  ChildA:
+    agent: Worker
+    output_file: A.md
+  ChildB:
+    agent: Worker
+    output_file: B.md
+  Done:
+    type: final
+`);
+    const { machine } = translateToMachine(config);
+
+    const actors: Record<string, any> = {
+      run_ChildA: fromPromise(async () => ({ status: "ok" })),
+      run_ChildB: fromPromise(async () => {
+        throw new Error("ChildB failed!");
+      }),
+    };
+
+    const provided = machine.provide({ actors } as any);
+    const actor = createActor(provided);
+    actor.start();
+
+    // Both children reach final (one via done, one via failed), so parallel completes
+    const snapshot = await waitFor(actor, (s) => s.status === "done", { timeout: 5000 });
+    expect(snapshot.value).toBe("Done");
+  });
+
+  test("mixed paradigm: serial → fork → serial → conditional", async () => {
+    const actor = buildAndRun(
+      `
+name: "MixedFlow"
+agents:
+  A:
+    driver: test
+phases:
+  Plan:
+    agent: A
+    output_file: PLAN.md
+    next: ParallelWork
+  ParallelWork:
+    type: fork
+    phases: [WorkA, WorkB]
+    next: Review
+  WorkA:
+    agent: A
+    output_file: WORK_A.md
+  WorkB:
+    agent: A
+    output_file: WORK_B.md
+  Review:
+    agent: A
+    output_file: REVIEW.md
+    next_if:
+      approved: Done
+      rejected: Plan
+    max_retries: 1
+  Done:
+    type: final
+`,
+      {
+        Plan: { status: "planned" },
+        WorkA: { status: "done" },
+        WorkB: { status: "done" },
+        Review: { status: "approved" },
+      }
+    );
+
+    actor.start();
+    const snapshot = await waitFor(actor, (s) => s.status === "done", { timeout: 5000 });
+    expect(snapshot.value).toBe("Done");
   });
 });
