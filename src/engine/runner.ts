@@ -127,11 +127,14 @@ export async function runPipeline(
               case "output":
                 emit("AGENT_OUTPUT", phaseName, { text: event.text });
                 break;
-              case "complete":
+              case "complete": {
+                const duration = event.durationMs != null ? `${event.durationMs}ms` : "unknown";
+                const cost = event.costUsd != null ? `$${event.costUsd.toFixed(4)}` : "N/A";
                 emit("AGENT_OUTPUT", phaseName, {
-                  text: `[Agent completed in ${event.durationMs}ms, cost: $${event.costUsd.toFixed(4)}]`,
+                  text: `[Agent completed in ${duration}, cost: ${cost}]`,
                 });
                 break;
+              }
               case "error":
                 throw event.error;
             }
