@@ -1,152 +1,220 @@
 import { describe, expect, test } from "bun:test";
-import { createSubprocessDriver, type SubprocessDriverConfig } from "../../src/driver/subprocess.js";
-import type { AgentEvent } from "../../src/driver/types.js";
+import {
+  createSubprocessDriver,
+  type SubprocessDriverConfig,
+} from "../../src/driver/subprocess.js";
+import type { AgentEvent, AgentDriverFn } from "../../src/driver/types.js";
 
-describe("Subprocess Driver", () => {
-  test("spawns echo command and receives output + complete", async () => {
-    const driver = createSubprocessDriver({
-      command: "echo",
-      buildArgs: (prompt) => [prompt],
-      parseLine: null as any, // no JSON parsing
-    });
+/** Collect all events from an async generator into an array. */
+async function collectEvents(
+  gen: AsyncGenerator<AgentEvent>
+): Promise<AgentEvent[]> {
+  const events: AgentEvent[] = [];
+  for await (const event of gen) {
+    events.push(event);
+  }
+  return events;
+}
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("hello world", "/tmp")) {
-      events.push(event);
-    }
+/** Minimal config that spawns a shell command via /bin/sh -c. */
+function shellDriver(shellCmd: string): SubprocessDriverConfig {
+  return {
+    command: "/bin/sh",
+    buildArgs: () => ["-c", shellCmd],
+  };
+}
 
-    const outputEvents = events.filter((e) => e.type === "output");
-    const completeEvents = events.filter((e) => e.type === "complete");
-
-    expect(outputEvents.length).toBeGreaterThanOrEqual(1);
-    expect(completeEvents).toHaveLength(1);
-    expect(outputEvents[0].type === "output" && outputEvents[0].text).toContain("hello world");
+describe("createSubprocessDriver", () => {
+  test("returns a function matching AgentDriverFn", () => {
+    const driver: AgentDriverFn = createSubprocessDriver(
+      shellDriver("echo hi")
+    );
+    expect(typeof driver).toBe("function");
   });
 
-  test("non-zero exit code yields error event with stderr", async () => {
-    const driver = createSubprocessDriver({
-      command: "bash",
-      buildArgs: () => ["-c", "echo 'oops' >&2; exit 1"],
-      parseLine: null as any,
-    });
+  test("happy path: echo produces output + complete events", async () => {
+    const driver = createSubprocessDriver(shellDriver('echo "hello world"'));
+    const events = await collectEvents(driver("ignored", "/tmp"));
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp")) {
-      events.push(event);
-    }
+    const outputs = events.filter((e) => e.type === "output");
+    const completes = events.filter((e) => e.type === "complete");
 
-    const errorEvents = events.filter((e) => e.type === "error");
-    expect(errorEvents).toHaveLength(1);
-    if (errorEvents[0].type === "error") {
-      expect(errorEvents[0].error.message).toContain("exited with code 1");
-      expect(errorEvents[0].error.message).toContain("oops");
+    expect(outputs.length).toBeGreaterThanOrEqual(1);
+    expect(completes).toHaveLength(1);
+
+    // The output text should contain "hello world"
+    const allText = outputs
+      .map((e) => (e.type === "output" ? e.text : ""))
+      .join("\n");
+    expect(allText).toContain("hello world");
+
+    // Complete event should have the result
+    const complete = completes[0]!;
+    if (complete.type === "complete") {
+      expect(complete.result).toContain("hello world");
     }
   });
 
-  test("command not found yields error event", async () => {
-    const driver = createSubprocessDriver({
-      command: "nonexistent_command_xyz",
+  test("multiline output yields one event per line", async () => {
+    const driver = createSubprocessDriver(
+      shellDriver('printf "line1\\nline2\\nline3\\n"')
+    );
+    const events = await collectEvents(driver("ignored", "/tmp"));
+
+    const outputs = events.filter((e) => e.type === "output");
+    expect(outputs).toHaveLength(3);
+    expect(outputs.map((e) => (e.type === "output" ? e.text : ""))).toEqual([
+      "line1",
+      "line2",
+      "line3",
+    ]);
+  });
+
+  test("error path: non-zero exit yields error event with stderr", async () => {
+    const driver = createSubprocessDriver(
+      shellDriver('echo "oops" >&2; exit 1')
+    );
+    const events = await collectEvents(driver("ignored", "/tmp"));
+
+    const errors = events.filter((e) => e.type === "error");
+    expect(errors).toHaveLength(1);
+
+    const err = errors[0]!;
+    if (err.type === "error") {
+      expect(err.error.message).toContain("exited with code 1");
+      expect(err.error.message).toContain("oops");
+    }
+  });
+
+  test("error path: command not found yields error event", async () => {
+    const config: SubprocessDriverConfig = {
+      command: "__nonexistent_command_maestro_test__",
       buildArgs: () => [],
-      parseLine: null as any,
-    });
+    };
+    const driver = createSubprocessDriver(config);
+    const events = await collectEvents(driver("ignored", "/tmp"));
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp")) {
-      events.push(event);
-    }
+    const errors = events.filter((e) => e.type === "error");
+    expect(errors.length).toBeGreaterThanOrEqual(1);
 
-    const errorEvents = events.filter((e) => e.type === "error");
-    expect(errorEvents.length).toBeGreaterThanOrEqual(1);
+    const err = errors[0]!;
+    expect(err.type).toBe("error");
   });
 
   test("empty stdout yields complete with empty result", async () => {
-    const driver = createSubprocessDriver({
-      command: "true",
-      buildArgs: () => [],
-      parseLine: null as any,
-    });
+    const driver = createSubprocessDriver(shellDriver("true"));
+    const events = await collectEvents(driver("ignored", "/tmp"));
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp")) {
-      events.push(event);
-    }
+    const outputs = events.filter((e) => e.type === "output");
+    const completes = events.filter((e) => e.type === "complete");
 
-    const complete = events.find((e) => e.type === "complete");
-    expect(complete).toBeDefined();
-    if (complete?.type === "complete") {
-      expect(complete.result).toBe("");
+    expect(outputs).toHaveLength(0);
+    expect(completes).toHaveLength(1);
+
+    if (completes[0]!.type === "complete") {
+      expect(completes[0]!.result).toBe("");
     }
   });
 
-  test("parseJsonLine mode parses structured output", async () => {
+  test("AbortController abort terminates the process", async () => {
+    const abortController = new AbortController();
+
+    // Long-running process
+    const driver = createSubprocessDriver(shellDriver("sleep 60"));
+
+    const eventPromise = collectEvents(
+      driver("ignored", "/tmp", { abortController })
+    );
+
+    // Abort after a short delay
+    setTimeout(() => abortController.abort(), 100);
+
+    const events = await eventPromise;
+
+    const errors = events.filter((e) => e.type === "error");
+    expect(errors).toHaveLength(1);
+
+    if (errors[0]!.type === "error") {
+      expect(errors[0]!.error.message).toContain("aborted");
+    }
+  });
+
+  test("parseJsonLine is used when provided", async () => {
+    // Emit JSON lines from the subprocess
     const driver = createSubprocessDriver({
-      command: "bash",
-      buildArgs: () => ["-c", 'echo \'{"type":"msg","text":"hello"}\'; echo \'{"type":"done"}\''],
-      parseJsonLine: (line) => {
+      command: "/bin/sh",
+      buildArgs: () => [
+        "-c",
+        'echo \'{"type":"output","text":"parsed"}\'; echo \'{"type":"output","text":"also parsed"}\'',
+      ],
+      parseJsonLine: (line: string) => {
         try {
-          const data = JSON.parse(line);
-          if (data.type === "msg") return { type: "output", text: data.text };
-          return null;
+          const obj = JSON.parse(line);
+          if (obj.type === "output" && typeof obj.text === "string") {
+            return { type: "output", text: obj.text };
+          }
         } catch {
-          return null;
+          // Not valid JSON — skip.
         }
+        return null;
       },
     });
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp")) {
-      events.push(event);
-    }
+    const events = await collectEvents(driver("ignored", "/tmp"));
 
     const outputs = events.filter((e) => e.type === "output");
-    expect(outputs).toHaveLength(1);
-    if (outputs[0].type === "output") {
-      expect(outputs[0].text).toBe("hello");
-    }
+    expect(outputs).toHaveLength(2);
+    expect(outputs.map((e) => (e.type === "output" ? e.text : ""))).toEqual([
+      "parsed",
+      "also parsed",
+    ]);
   });
 
-  test("abort controller terminates process", async () => {
-    const ac = new AbortController();
+  test("extractUsage populates complete event metrics", async () => {
     const driver = createSubprocessDriver({
-      command: "sleep",
-      buildArgs: () => ["60"],
-      parseLine: null as any,
+      command: "/bin/sh",
+      buildArgs: () => ["-c", 'echo "done"'],
+      extractUsage: () => ({
+        tokensIn: 100,
+        tokensOut: 200,
+        costUsd: 0.01,
+      }),
     });
 
-    // Abort after 100ms
-    setTimeout(() => ac.abort(), 100);
+    const events = await collectEvents(driver("ignored", "/tmp"));
 
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp", { abortController: ac })) {
-      events.push(event);
-    }
+    const completes = events.filter((e) => e.type === "complete");
+    expect(completes).toHaveLength(1);
 
-    const errorEvents = events.filter((e) => e.type === "error");
-    expect(errorEvents).toHaveLength(1);
-    if (errorEvents[0].type === "error") {
-      expect(errorEvents[0].error.message).toContain("aborted");
-    }
-  });
-
-  test("extractUsage populates complete event", async () => {
-    const driver = createSubprocessDriver({
-      command: "echo",
-      buildArgs: () => ["done"],
-      parseJsonLine: undefined,
-      extractUsage: () => ({ tokensIn: 100, tokensOut: 50, costUsd: 0.01 }),
-    });
-
-    const events: AgentEvent[] = [];
-    for await (const event of driver("test", "/tmp")) {
-      events.push(event);
-    }
-
-    const complete = events.find((e) => e.type === "complete");
-    expect(complete).toBeDefined();
-    if (complete?.type === "complete") {
+    const complete = completes[0]!;
+    if (complete.type === "complete") {
       expect(complete.tokensIn).toBe(100);
-      expect(complete.tokensOut).toBe(50);
+      expect(complete.tokensOut).toBe(200);
       expect(complete.costUsd).toBe(0.01);
     }
+  });
+
+  test("buildArgs receives prompt, workdir, and options", async () => {
+    let receivedPrompt = "";
+    let receivedWorkdir = "";
+    let receivedOptions: unknown = null;
+
+    const driver = createSubprocessDriver({
+      command: "/bin/sh",
+      buildArgs: (prompt, workdir, options) => {
+        receivedPrompt = prompt;
+        receivedWorkdir = workdir;
+        receivedOptions = options;
+        return ["-c", "true"];
+      },
+    });
+
+    await collectEvents(
+      driver("test prompt", "/test/dir", { maxTurns: 5 })
+    );
+
+    expect(receivedPrompt).toBe("test prompt");
+    expect(receivedWorkdir).toBe("/test/dir");
+    expect(receivedOptions).toEqual({ maxTurns: 5 });
   });
 });

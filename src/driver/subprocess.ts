@@ -84,7 +84,8 @@ export function createSubprocessDriver(
 
     // Stream stdout line-by-line
     try {
-      const reader = proc.stdout.getReader();
+      const stdout = proc.stdout as ReadableStream<Uint8Array>;
+      const reader = stdout.getReader();
       const decoder = new TextDecoder();
       let buffer = "";
 
@@ -163,7 +164,7 @@ export function createSubprocessDriver(
       // Collect stderr for error reporting
       let stderr = "";
       try {
-        stderr = await new Response(proc.stderr).text();
+        stderr = await new Response(proc.stderr as ReadableStream).text();
       } catch {
         // stderr may not be readable — ignore.
       }
