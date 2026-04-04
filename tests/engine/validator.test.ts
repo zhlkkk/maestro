@@ -333,4 +333,141 @@ handoff_routing:
       /violates handoff_routing/
     );
   });
+
+  // Fork phase validation
+  test("valid fork phase with child phases passes", () => {
+    expectNoErrors(`
+name: "ForkValid"
+agents:
+  Worker:
+    driver: claude-code
+phases:
+  Analyze:
+    agent: Worker
+    output_file: ANALYSIS.md
+    next: ParallelFix
+  ParallelFix:
+    type: fork
+    phases: [FixFE, FixBE]
+    next: Verify
+  FixFE:
+    agent: Worker
+    output_file: FIX_FE.md
+  FixBE:
+    agent: Worker
+    output_file: FIX_BE.md
+  Verify:
+    agent: Worker
+    output_file: VERIFY.md
+    next: Done
+  Done:
+    type: final
+`);
+  });
+
+  test("fork phase missing phases list", () => {
+    expectError(
+      `
+name: "Bad"
+agents:
+  A:
+    driver: test
+phases:
+  Fork:
+    type: fork
+    next: Done
+  Done:
+    type: final
+`,
+      /must list child phases/
+    );
+  });
+
+  test("fork phase references nonexistent child", () => {
+    expectError(
+      `
+name: "Bad"
+agents:
+  A:
+    driver: test
+phases:
+  Fork:
+    type: fork
+    phases: [Ghost]
+    next: Done
+  Done:
+    type: final
+`,
+      /Fork child "Ghost" does not exist/
+    );
+  });
+
+  test("nested fork not allowed", () => {
+    expectError(
+      `
+name: "Bad"
+agents:
+  A:
+    driver: test
+phases:
+  Outer:
+    type: fork
+    phases: [Inner]
+    next: Done
+  Inner:
+    type: fork
+    phases: [Done]
+    next: Done
+  Done:
+    type: final
+`,
+      /Nested fork not supported/
+    );
+  });
+
+  test("fork child with next_if not allowed", () => {
+    expectError(
+      `
+name: "Bad"
+agents:
+  A:
+    driver: test
+phases:
+  Fork:
+    type: fork
+    phases: [Child]
+    next: Done
+  Child:
+    agent: A
+    output_file: out.md
+    next_if:
+      ok: Done
+      fail: Done
+  Done:
+    type: final
+`,
+      /cannot use next_if/
+    );
+  });
+
+  test("fork phase without next (join target) is invalid", () => {
+    expectError(
+      `
+name: "Bad"
+agents:
+  A:
+    driver: test
+phases:
+  Fork:
+    type: fork
+    phases: [Child]
+  Child:
+    agent: A
+    output_file: out.md
+  Done:
+    type: final
+`,
+      /must have 'next' to specify the join target/
+    );
+  });
 });

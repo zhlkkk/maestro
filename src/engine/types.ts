@@ -17,9 +17,11 @@ export interface PhaseConfig {
   next_if?: Record<string, string>;
   timeout_s?: number;
   max_retries?: number;
-  /** Set to "final" for terminal states */
-  type?: "final";
+  /** Phase type: "final" for terminal, "fork" for parallel execution */
+  type?: "final" | "fork";
   model?: string;
+  /** For fork phases: list of child phase names to run in parallel */
+  fork_phases?: string[];
 }
 
 /** Top-level paradigm configuration parsed from YAML */
