@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { createWorktreeManager } from "../../src/sandbox/worktree.js";
-import { copyHandoff } from "../../src/sandbox/handoff.js";
+import { copyHandoff, generateDiffSummary } from "../../src/sandbox/handoff.js";
 
 let testRepoDir: string;
 
@@ -108,6 +108,53 @@ describe("copyHandoff", () => {
       const result = await copyHandoff(src, dst);
       expect(result.added).toContain("src/lib/utils.ts");
       expect(existsSync(join(dst, "src", "lib", "utils.ts"))).toBe(true);
+    } finally {
+      await mgr.cleanup();
+    }
+  });
+});
+
+describe("generateDiffSummary", () => {
+  test("returns diff summary for modified tracked files", async () => {
+    const mgr = createWorktreeManager(testRepoDir, "diff-1");
+    try {
+      const wt = await mgr.getWorktree("PhaseA");
+
+      // Stage and modify a file to make it tracked with changes
+      writeFileSync(join(wt, "initial.txt"), "modified content");
+      execFileSync("git", ["add", "initial.txt"], { cwd: wt });
+      // Now modify it again so there's a diff against the index
+      writeFileSync(join(wt, "initial.txt"), "modified again");
+
+      const summary = await generateDiffSummary(wt);
+      expect(summary).toContain("initial.txt");
+    } finally {
+      await mgr.cleanup();
+    }
+  });
+
+  test("returns new files in summary", async () => {
+    const mgr = createWorktreeManager(testRepoDir, "diff-2");
+    try {
+      const wt = await mgr.getWorktree("PhaseA");
+
+      // Add an untracked file
+      writeFileSync(join(wt, "new-file.ts"), "console.log('new')");
+
+      const summary = await generateDiffSummary(wt);
+      expect(summary).toContain("New Files");
+      expect(summary).toContain("new-file.ts");
+    } finally {
+      await mgr.cleanup();
+    }
+  });
+
+  test("returns no changes message for clean worktree", async () => {
+    const mgr = createWorktreeManager(testRepoDir, "diff-3");
+    try {
+      const wt = await mgr.getWorktree("PhaseA");
+      const summary = await generateDiffSummary(wt);
+      expect(summary).toContain("no changes detected");
     } finally {
       await mgr.cleanup();
     }

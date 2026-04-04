@@ -2,7 +2,7 @@ import { createActor, fromPromise, waitFor } from "xstate";
 import type { ParadigmConfig } from "./types.js";
 import { translateToMachine, type PhaseOutput } from "./machine.js";
 import { createWorktreeManager, cleanupStaleWorktrees } from "../sandbox/worktree.js";
-import { copyHandoff } from "../sandbox/handoff.js";
+import { copyHandoff, generateDiffSummary } from "../sandbox/handoff.js";
 import { assemblePrompt, readOutputFile } from "../sandbox/prompt.js";
 import { parseOutputFile } from "./output-parser.js";
 import { getDriver, validateDrivers } from "../driver/registry.js";
@@ -92,8 +92,18 @@ export async function runPipeline(
           await copyHandoff(lastPhaseWorktree, worktreePath);
         }
 
-        // 3. Assemble prompt
-        const previousOutput = lastPhaseOutputContent ?? "";
+        // 3. Assemble prompt — use incremental mode for retries
+        const isRetry = phaseWorktrees.has(phaseName);
+        let previousOutput: string;
+
+        if (isRetry && lastPhaseOutputContent) {
+          // Incremental handoff: diff summary + review feedback instead of full output
+          const diffSummary = await generateDiffSummary(worktreePath);
+          previousOutput = `## Review Feedback\n${lastPhaseOutputContent}\n\n## Changes Made\n${diffSummary}`;
+        } else {
+          previousOutput = lastPhaseOutputContent ?? "";
+        }
+
         let prompt: string;
 
         if (phase.prompt_file) {
@@ -128,6 +138,8 @@ export async function runPipeline(
           emit("PHASE_TIMEOUT", phaseName, { timeout_s: phase.timeout_s ?? DEFAULT_TIMEOUT_S });
         }, timeoutMs);
 
+        let completeEvent: Extract<import("../driver/types.js").AgentEvent, { type: "complete" }> | undefined;
+
         try {
           for await (const event of driver(prompt, worktreePath, {
             systemPrompt,
@@ -140,6 +152,7 @@ export async function runPipeline(
                 emit("AGENT_OUTPUT", phaseName, { text: event.text });
                 break;
               case "complete": {
+                completeEvent = event;
                 const duration = event.durationMs != null ? `${event.durationMs}ms` : "unknown";
                 const cost = event.costUsd != null ? `$${event.costUsd.toFixed(4)}` : "N/A";
                 emit("AGENT_OUTPUT", phaseName, {
@@ -182,6 +195,10 @@ export async function runPipeline(
         emit("PHASE_COMPLETE", phaseName, {
           status: parsed.status,
           duration_ms: durationMs,
+          tokens_in: completeEvent?.tokensIn,
+          tokens_out: completeEvent?.tokensOut,
+          cost_usd: completeEvent?.costUsd,
+          model_used: completeEvent?.modelUsed,
         });
 
         return { status: parsed.status };
