@@ -53,7 +53,7 @@ export async function runPipeline(
   validateDrivers(driverNames);
 
   // Clean up stale worktrees from previous crashed runs
-  cleanupStaleWorktrees(options.repoRoot);
+  await cleanupStaleWorktrees(options.repoRoot);
 
   const worktreeManager = createWorktreeManager(options.repoRoot);
   const phaseOrder = Object.keys(config.phases);
@@ -83,11 +83,11 @@ export async function runPipeline(
         emit("PHASE_START", phaseName, { agent: phase.agent });
 
         // 1. Prepare worktree
-        const worktreePath = worktreeManager.getWorktree(phaseName);
+        const worktreePath = await worktreeManager.getWorktree(phaseName);
 
         // 2. Copy changes from previous phase (if any)
         if (lastPhaseWorktree) {
-          copyHandoff(lastPhaseWorktree, worktreePath);
+          await copyHandoff(lastPhaseWorktree, worktreePath);
         }
 
         // 3. Assemble prompt
@@ -225,6 +225,6 @@ export async function runPipeline(
       error: errorMsg,
     };
   } finally {
-    worktreeManager.cleanup();
+    await worktreeManager.cleanup();
   }
 }

@@ -26,90 +26,90 @@ afterAll(() => {
 });
 
 describe("copyHandoff", () => {
-  test("detects added files", () => {
+  test("detects added files", async () => {
     const mgr = createWorktreeManager(testRepoDir, "handoff-1");
     try {
-      const src = mgr.getWorktree("PhaseA");
-      const dst = mgr.getWorktree("PhaseB");
+      const src = await mgr.getWorktree("PhaseA");
+      const dst = await mgr.getWorktree("PhaseB");
 
       // Add a new file in source worktree
       writeFileSync(join(src, "new-file.txt"), "new content");
 
-      const result = copyHandoff(src, dst);
+      const result = await copyHandoff(src, dst);
       expect(result.added).toContain("new-file.txt");
       expect(existsSync(join(dst, "new-file.txt"))).toBe(true);
       expect(readFileSync(join(dst, "new-file.txt"), "utf-8")).toBe("new content");
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("detects modified files", () => {
+  test("detects modified files", async () => {
     const mgr = createWorktreeManager(testRepoDir, "handoff-2");
     try {
-      const src = mgr.getWorktree("PhaseA");
-      const dst = mgr.getWorktree("PhaseB");
+      const src = await mgr.getWorktree("PhaseA");
+      const dst = await mgr.getWorktree("PhaseB");
 
       // Modify an existing file
       writeFileSync(join(src, "existing.txt"), "modified content");
       execFileSync("git", ["add", "existing.txt"], { cwd: src, stdio: "pipe" });
 
-      const result = copyHandoff(src, dst);
+      const result = await copyHandoff(src, dst);
       expect(result.modified).toContain("existing.txt");
       expect(readFileSync(join(dst, "existing.txt"), "utf-8")).toBe("modified content");
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("detects deleted files", () => {
+  test("detects deleted files", async () => {
     const mgr = createWorktreeManager(testRepoDir, "handoff-3");
     try {
-      const src = mgr.getWorktree("PhaseA");
-      const dst = mgr.getWorktree("PhaseB");
+      const src = await mgr.getWorktree("PhaseA");
+      const dst = await mgr.getWorktree("PhaseB");
 
       // Delete a file in source
       rmSync(join(src, "existing.txt"));
       execFileSync("git", ["add", "existing.txt"], { cwd: src, stdio: "pipe" });
 
-      const result = copyHandoff(src, dst);
+      const result = await copyHandoff(src, dst);
       expect(result.deleted).toContain("existing.txt");
       expect(existsSync(join(dst, "existing.txt"))).toBe(false);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("no changes returns empty handoff", () => {
+  test("no changes returns empty handoff", async () => {
     const mgr = createWorktreeManager(testRepoDir, "handoff-4");
     try {
-      const src = mgr.getWorktree("PhaseA");
-      const dst = mgr.getWorktree("PhaseB");
+      const src = await mgr.getWorktree("PhaseA");
+      const dst = await mgr.getWorktree("PhaseB");
 
-      const result = copyHandoff(src, dst);
+      const result = await copyHandoff(src, dst);
       expect(result.added).toHaveLength(0);
       expect(result.modified).toHaveLength(0);
       expect(result.deleted).toHaveLength(0);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("handles nested directory creation", () => {
+  test("handles nested directory creation", async () => {
     const mgr = createWorktreeManager(testRepoDir, "handoff-5");
     try {
-      const src = mgr.getWorktree("PhaseA");
-      const dst = mgr.getWorktree("PhaseB");
+      const src = await mgr.getWorktree("PhaseA");
+      const dst = await mgr.getWorktree("PhaseB");
 
       // Create nested file
       mkdirSync(join(src, "src", "lib"), { recursive: true });
       writeFileSync(join(src, "src", "lib", "utils.ts"), "export const x = 1;");
 
-      const result = copyHandoff(src, dst);
+      const result = await copyHandoff(src, dst);
       expect(result.added).toContain("src/lib/utils.ts");
       expect(existsSync(join(dst, "src", "lib", "utils.ts"))).toBe(true);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 });

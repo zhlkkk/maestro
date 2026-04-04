@@ -28,87 +28,87 @@ afterAll(() => {
 });
 
 describe("WorktreeManager", () => {
-  test("creates a worktree for a phase", () => {
+  test("creates a worktree for a phase", async () => {
     const mgr = createWorktreeManager(testRepoDir, "test-run-1");
     try {
-      const wtPath = mgr.getWorktree("Plan");
+      const wtPath = await mgr.getWorktree("Plan");
       expect(existsSync(wtPath)).toBe(true);
       expect(existsSync(join(wtPath, "README.md"))).toBe(true);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("reuses worktree on second call for same phase", () => {
+  test("reuses worktree on second call for same phase", async () => {
     const mgr = createWorktreeManager(testRepoDir, "test-run-2");
     try {
-      const path1 = mgr.getWorktree("Code");
-      const path2 = mgr.getWorktree("Code");
+      const path1 = await mgr.getWorktree("Code");
+      const path2 = await mgr.getWorktree("Code");
       expect(path1).toBe(path2);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("creates separate worktrees for different phases", () => {
+  test("creates separate worktrees for different phases", async () => {
     const mgr = createWorktreeManager(testRepoDir, "test-run-3");
     try {
-      const path1 = mgr.getWorktree("Plan");
-      const path2 = mgr.getWorktree("Code");
+      const path1 = await mgr.getWorktree("Plan");
+      const path2 = await mgr.getWorktree("Code");
       expect(path1).not.toBe(path2);
       expect(existsSync(path1)).toBe(true);
       expect(existsSync(path2)).toBe(true);
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 
-  test("cleanup removes all worktrees", () => {
+  test("cleanup removes all worktrees", async () => {
     const mgr = createWorktreeManager(testRepoDir, "test-run-4");
-    const path1 = mgr.getWorktree("Plan");
-    const path2 = mgr.getWorktree("Code");
+    const path1 = await mgr.getWorktree("Plan");
+    const path2 = await mgr.getWorktree("Code");
     expect(existsSync(path1)).toBe(true);
 
-    mgr.cleanup();
+    await mgr.cleanup();
     // Worktree directories should be removed
     expect(existsSync(path1)).toBe(false);
     expect(existsSync(path2)).toBe(false);
   });
 
-  test("preserves content across retries (reuse)", () => {
+  test("preserves content across retries (reuse)", async () => {
     const mgr = createWorktreeManager(testRepoDir, "test-run-5");
     try {
-      const wtPath = mgr.getWorktree("Execute");
+      const wtPath = await mgr.getWorktree("Execute");
       // Write a file in the worktree (simulating agent output)
       writeFileSync(join(wtPath, "agent-output.txt"), "first run");
 
       // Second call should reuse — file should still be there
-      const wtPath2 = mgr.getWorktree("Execute");
+      const wtPath2 = await mgr.getWorktree("Execute");
       expect(wtPath).toBe(wtPath2);
       const content = require("node:fs").readFileSync(join(wtPath2, "agent-output.txt"), "utf-8");
       expect(content).toBe("first run");
     } finally {
-      mgr.cleanup();
+      await mgr.cleanup();
     }
   });
 });
 
 describe("cleanupStaleWorktrees", () => {
-  test("cleans up stale worktrees from crashed runs", () => {
+  test("cleans up stale worktrees from crashed runs", async () => {
     const mgr = createWorktreeManager(testRepoDir, "stale-run");
-    const wtPath = mgr.getWorktree("Orphan");
+    const wtPath = await mgr.getWorktree("Orphan");
     expect(existsSync(wtPath)).toBe(true);
 
     // Don't call cleanup — simulate a crash
     // Now call cleanupStaleWorktrees
-    cleanupStaleWorktrees(testRepoDir);
+    await cleanupStaleWorktrees(testRepoDir);
 
     // Stale worktree should be gone
     expect(existsSync(wtPath)).toBe(false);
   });
 
-  test("no-op when no stale worktrees exist", () => {
+  test("no-op when no stale worktrees exist", async () => {
     // Should not throw
-    cleanupStaleWorktrees(testRepoDir);
+    await cleanupStaleWorktrees(testRepoDir);
   });
 });

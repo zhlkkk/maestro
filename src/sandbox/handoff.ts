@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { execGit } from "./git.js";
 
 export interface HandoffResult {
   added: string[];
@@ -12,16 +12,12 @@ export interface HandoffResult {
  * Copy changed files from source worktree to target worktree.
  * Uses `git status --porcelain` to detect all changes (tracked + untracked).
  */
-export function copyHandoff(sourceWorktree: string, targetWorktree: string): HandoffResult {
+export async function copyHandoff(sourceWorktree: string, targetWorktree: string): Promise<HandoffResult> {
   const result: HandoffResult = { added: [], modified: [], deleted: [] };
 
   let statusOutput: string;
   try {
-    statusOutput = execFileSync("git", ["status", "--porcelain", "-uall"], {
-      cwd: sourceWorktree,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    statusOutput = (await execGit(["status", "--porcelain", "-uall"], sourceWorktree)).trim();
   } catch {
     return result;
   }
