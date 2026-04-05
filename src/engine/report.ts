@@ -10,6 +10,10 @@ export interface PhaseReport {
   retries: number;
   agentStatus?: string;
   error?: string;
+  costUsd?: number;
+  tokensIn?: number;
+  tokensOut?: number;
+  modelUsed?: string;
 }
 
 export interface PipelineReport {
@@ -82,7 +86,12 @@ function buildReport(events: MaestroEvent[]): PipelineReport {
       error = fail.data.error as string;
     }
 
-    phases.push({ name, status, durationMs, retries: retryCount, agentStatus, error });
+    const costUsd = complete?.data.cost_usd as number | undefined;
+    const tokensIn = complete?.data.tokens_in as number | undefined;
+    const tokensOut = complete?.data.tokens_out as number | undefined;
+    const modelUsed = complete?.data.model_used as string | undefined;
+
+    phases.push({ name, status, durationMs, retries: retryCount, agentStatus, error, costUsd, tokensIn, tokensOut, modelUsed });
   }
 
   const startTime = pipelineStart?.timestamp ?? "";
@@ -130,6 +139,42 @@ function formatReportMarkdown(report: PipelineReport): string {
     lines.push(
       `| ${icon} ${phase.name} | ${phase.status} | ${duration} | ${phase.retries} | ${phase.agentStatus ?? "-"} |`
     );
+  }
+
+  // Add cost summary if any phase has usage data
+  const hasUsageData = report.phases.some(
+    (p) => p.costUsd != null || p.tokensIn != null || p.tokensOut != null || p.modelUsed != null
+  );
+
+  if (hasUsageData) {
+    lines.push("", "## Cost Summary", "");
+    lines.push("| Phase | Model | Tokens In | Tokens Out | Cost |");
+    lines.push("|-------|-------|-----------|------------|------|");
+
+    let totalCost = 0;
+    let totalTokensIn = 0;
+    let totalTokensOut = 0;
+    let hasCost = false;
+    let hasTokensIn = false;
+    let hasTokensOut = false;
+
+    for (const phase of report.phases) {
+      const model = phase.modelUsed ?? "N/A";
+      const tokIn = phase.tokensIn != null ? String(phase.tokensIn) : "N/A";
+      const tokOut = phase.tokensOut != null ? String(phase.tokensOut) : "N/A";
+      const cost = phase.costUsd != null ? `$${phase.costUsd.toFixed(4)}` : "N/A";
+
+      if (phase.costUsd != null) { totalCost += phase.costUsd; hasCost = true; }
+      if (phase.tokensIn != null) { totalTokensIn += phase.tokensIn; hasTokensIn = true; }
+      if (phase.tokensOut != null) { totalTokensOut += phase.tokensOut; hasTokensOut = true; }
+
+      lines.push(`| ${phase.name} | ${model} | ${tokIn} | ${tokOut} | ${cost} |`);
+    }
+
+    const totalTokIn = hasTokensIn ? String(totalTokensIn) : "N/A";
+    const totalTokOut = hasTokensOut ? String(totalTokensOut) : "N/A";
+    const totalCostStr = hasCost ? `$${totalCost.toFixed(4)}` : "N/A";
+    lines.push(`| **Total** | - | ${totalTokIn} | ${totalTokOut} | ${totalCostStr} |`);
   }
 
   // Add failure details if any

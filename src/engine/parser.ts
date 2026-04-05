@@ -74,6 +74,7 @@ function parseAgents(raw: unknown): Record<string, import("./types.js").AgentCon
       system_prompt_file: optionalString(a, "system_prompt_file"),
       system_prompt: optionalString(a, "system_prompt"),
       tools: Array.isArray(a.tools) ? a.tools.map(String) : undefined,
+      model: optionalString(a, "model"),
     };
   }
   return agents;
@@ -92,13 +93,19 @@ function parsePhases(
       throw new ParserError(`phases.${name} must be an object`);
     }
     const p = val as Record<string, unknown>;
+    const phaseType = p.type === "final" ? "final" as const
+      : p.type === "fork" ? "fork" as const
+      : undefined;
+
     const phase: import("./types.js").PhaseConfig = {
       agent: typeof p.agent === "string" ? p.agent : "",
       output_file: optionalString(p, "output_file"),
       next: optionalString(p, "next"),
       timeout_s: typeof p.timeout_s === "number" ? p.timeout_s : undefined,
       max_retries: typeof p.max_retries === "number" ? p.max_retries : undefined,
-      type: p.type === "final" ? "final" : undefined,
+      type: phaseType,
+      model: optionalString(p, "model"),
+      fork_phases: Array.isArray(p.phases) ? p.phases.map(String) : undefined,
     };
 
     if (p.prompt_file && typeof p.prompt_file === "string") {

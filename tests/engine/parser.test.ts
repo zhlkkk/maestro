@@ -142,4 +142,96 @@ phases:
 `);
     expect(config.maestro_version).toBe("1");
   });
+
+  test("parses phase-level model field", () => {
+    const config = parseParadigm(`
+name: "ModelRouting"
+agents:
+  Worker:
+    driver: claude-code
+phases:
+  DoWork:
+    agent: Worker
+    output_file: RESULT.md
+    model: "gpt-4o"
+    next: Done
+  Done:
+    type: final
+`);
+    expect(config.phases.DoWork?.model).toBe("gpt-4o");
+    expect(config.phases.Done?.model).toBeUndefined();
+  });
+
+  test("parses agent-level model field", () => {
+    const config = parseParadigm(`
+name: "AgentModel"
+agents:
+  Worker:
+    driver: claude-code
+    model: "claude-sonnet"
+phases:
+  DoWork:
+    agent: Worker
+    output_file: RESULT.md
+    next: Done
+  Done:
+    type: final
+`);
+    expect(config.agents.Worker?.model).toBe("claude-sonnet");
+  });
+
+  test("backward compat: paradigm without model fields parses correctly", () => {
+    const config = parseParadigm(MINIMAL_PARADIGM);
+    expect(config.agents.Worker?.model).toBeUndefined();
+    expect(config.phases.DoWork?.model).toBeUndefined();
+    expect(config.phases.Done?.model).toBeUndefined();
+  });
+
+  test("parses fork phase with child phases", () => {
+    const config = parseParadigm(`
+name: "ForkTest"
+agents:
+  Worker:
+    driver: claude-code
+phases:
+  Analyze:
+    agent: Worker
+    output_file: ANALYSIS.md
+    next: ParallelFix
+  ParallelFix:
+    type: fork
+    phases: [FixFrontend, FixBackend]
+    next: Verify
+  FixFrontend:
+    agent: Worker
+    output_file: FIX_FE.md
+  FixBackend:
+    agent: Worker
+    output_file: FIX_BE.md
+  Verify:
+    agent: Worker
+    output_file: VERIFY.md
+    next: Done
+  Done:
+    type: final
+`);
+    expect(config.phases.ParallelFix?.type).toBe("fork");
+    expect(config.phases.ParallelFix?.fork_phases).toEqual(["FixFrontend", "FixBackend"]);
+    expect(config.phases.ParallelFix?.next).toBe("Verify");
+    expect(config.phases.FixFrontend?.type).toBeUndefined();
+    expect(config.phases.FixBackend?.type).toBeUndefined();
+  });
+
+  test("fork phase without phases array has undefined fork_phases", () => {
+    const config = parseParadigm(`
+name: "NoForkPhases"
+agents:
+  Worker:
+    driver: claude-code
+phases:
+  Done:
+    type: final
+`);
+    expect(config.phases.Done?.fork_phases).toBeUndefined();
+  });
 });

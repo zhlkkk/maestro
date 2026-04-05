@@ -10,6 +10,7 @@ interface DashboardState {
   pipelineStatus: "running" | "completed" | "failed";
   currentPhase?: string;
   completedPhases: Array<{ name: string; status: string; durationMs: number }>;
+  forkChildren: Record<string, string[]>;
 }
 
 type DashboardAction = MaestroEvent;
@@ -20,10 +21,29 @@ function dashboardReducer(state: DashboardState, event: DashboardAction): Dashbo
   switch (event.type) {
     case "PHASE_START": {
       const phaseName = event.phase!;
+      const forkChildrenNames = event.data.fork_children as string[] | undefined;
+
+      // If this phase has fork children, track them
+      let newForkChildren = state.forkChildren;
+      let newPhases = state.phases;
+
+      if (forkChildrenNames && forkChildrenNames.length > 0) {
+        newForkChildren = { ...state.forkChildren, [phaseName]: forkChildrenNames };
+        // Add fork child phases if they don't exist yet
+        const existingNames = new Set(state.phases.map((p) => p.name));
+        const toAdd = forkChildrenNames
+          .filter((name) => !existingNames.has(name))
+          .map((name) => ({ name, status: "pending" as PhaseStatus }));
+        if (toAdd.length > 0) {
+          newPhases = [...state.phases, ...toAdd];
+        }
+      }
+
       return {
         ...state,
         currentPhase: phaseName,
-        phases: state.phases.map((p) =>
+        forkChildren: newForkChildren,
+        phases: newPhases.map((p) =>
           p.name === phaseName
             ? { ...p, status: "running" as PhaseStatus, startTime: Date.now() }
             : p
@@ -95,6 +115,7 @@ export function Dashboard({ phaseNames, paradigmName, task }: DashboardProps) {
     pipelineStatus: "running",
     currentPhase: undefined,
     completedPhases: [],
+    forkChildren: {},
   };
 
   const [state, dispatch] = useReducer(dashboardReducer, initialState);
@@ -119,7 +140,7 @@ export function Dashboard({ phaseNames, paradigmName, task }: DashboardProps) {
       </Static>
 
       {/* Phase progress */}
-      <PhaseList phases={state.phases} />
+      <PhaseList phases={state.phases} forkChildren={state.forkChildren} />
 
       {/* Agent output */}
       {state.currentPhase && (

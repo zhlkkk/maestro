@@ -2,10 +2,10 @@ import { createActor, fromPromise, waitFor } from "xstate";
 import type { ParadigmConfig } from "./types.js";
 import { translateToMachine, type PhaseOutput } from "./machine.js";
 import { createWorktreeManager, cleanupStaleWorktrees } from "../sandbox/worktree.js";
-import { copyHandoff } from "../sandbox/handoff.js";
+import { copyHandoff, generateDiffSummary } from "../sandbox/handoff.js";
 import { assemblePrompt, readOutputFile } from "../sandbox/prompt.js";
 import { parseOutputFile } from "./output-parser.js";
-import { runAgent } from "../driver/claude.js";
+import { getDriver, validateDrivers } from "../driver/registry.js";
 import type { MaestroEvent, MaestroEventType } from "../types.js";
 
 export interface RunnerOptions {
@@ -46,8 +46,14 @@ export async function runPipeline(
     options.onEvent?.(event);
   };
 
+  // Validate all driver references before starting (fail fast)
+  const driverNames = [...new Set(
+    Object.values(config.agents).map((a) => a.driver ?? "claude-code")
+  )];
+  validateDrivers(driverNames);
+
   // Clean up stale worktrees from previous crashed runs
-  cleanupStaleWorktrees(options.repoRoot);
+  await cleanupStaleWorktrees(options.repoRoot);
 
   const worktreeManager = createWorktreeManager(options.repoRoot);
   const phaseOrder = Object.keys(config.phases);
@@ -60,14 +66,16 @@ export async function runPipeline(
   try {
     const { machine } = translateToMachine(config);
 
+    // Track worktree state per phase for multi-path handoff
+    const phaseWorktrees = new Map<string, string>();
+    const phaseOutputs = new Map<string, string>();
+
     // Build real actor implementations for each phase
     const actors: Record<string, any> = {};
 
-    for (const [phaseName, phase] of Object.entries(config.phases)) {
-      if (phase.type === "final") continue;
-
-      const actorName = `run_${phaseName}`;
-      actors[actorName] = fromPromise(async (): Promise<PhaseOutput> => {
+    // Helper to create a phase actor
+    const createPhaseActor = (phaseName: string, phase: typeof config.phases[string]) => {
+      return fromPromise(async (): Promise<PhaseOutput> => {
         // Check abort signal
         if (options.abortSignal?.aborted) {
           throw new Error("Pipeline aborted");
@@ -77,15 +85,25 @@ export async function runPipeline(
         emit("PHASE_START", phaseName, { agent: phase.agent });
 
         // 1. Prepare worktree
-        const worktreePath = worktreeManager.getWorktree(phaseName);
+        const worktreePath = await worktreeManager.getWorktree(phaseName);
 
         // 2. Copy changes from previous phase (if any)
         if (lastPhaseWorktree) {
-          copyHandoff(lastPhaseWorktree, worktreePath);
+          await copyHandoff(lastPhaseWorktree, worktreePath);
         }
 
-        // 3. Assemble prompt
-        const previousOutput = lastPhaseOutputContent ?? "";
+        // 3. Assemble prompt — use incremental mode for retries
+        const isRetry = phaseWorktrees.has(phaseName);
+        let previousOutput: string;
+
+        if (isRetry && lastPhaseOutputContent) {
+          // Incremental handoff: diff summary + review feedback instead of full output
+          const diffSummary = await generateDiffSummary(worktreePath);
+          previousOutput = `## Review Feedback\n${lastPhaseOutputContent}\n\n## Changes Made\n${diffSummary}`;
+        } else {
+          previousOutput = lastPhaseOutputContent ?? "";
+        }
+
         let prompt: string;
 
         if (phase.prompt_file) {
@@ -102,6 +120,9 @@ export async function runPipeline(
         // Add system prompt from agent config
         const agentConfig = config.agents[phase.agent];
         const systemPrompt = agentConfig?.system_prompt ?? undefined;
+        const resolvedModel = phase.model ?? agentConfig?.model ?? undefined;
+        const driverName = agentConfig?.driver ?? "claude-code";
+        const driver = getDriver(driverName);
 
         // 4. Run agent with timeout
         const timeoutMs = (phase.timeout_s ?? DEFAULT_TIMEOUT_S) * 1000;
@@ -117,21 +138,28 @@ export async function runPipeline(
           emit("PHASE_TIMEOUT", phaseName, { timeout_s: phase.timeout_s ?? DEFAULT_TIMEOUT_S });
         }, timeoutMs);
 
+        let completeEvent: Extract<import("../driver/types.js").AgentEvent, { type: "complete" }> | undefined;
+
         try {
-          for await (const event of runAgent(prompt, worktreePath, {
+          for await (const event of driver(prompt, worktreePath, {
             systemPrompt,
             allowedTools: agentConfig?.tools,
+            model: resolvedModel,
             abortController,
           })) {
             switch (event.type) {
               case "output":
                 emit("AGENT_OUTPUT", phaseName, { text: event.text });
                 break;
-              case "complete":
+              case "complete": {
+                completeEvent = event;
+                const duration = event.durationMs != null ? `${event.durationMs}ms` : "unknown";
+                const cost = event.costUsd != null ? `$${event.costUsd.toFixed(4)}` : "N/A";
                 emit("AGENT_OUTPUT", phaseName, {
-                  text: `[Agent completed in ${event.durationMs}ms, cost: $${event.costUsd.toFixed(4)}]`,
+                  text: `[Agent completed in ${duration}, cost: ${cost}]`,
                 });
                 break;
+              }
               case "error":
                 throw event.error;
             }
@@ -156,19 +184,41 @@ export async function runPipeline(
           throw new Error(parsed.error);
         }
 
-        // Track for next phase handoff
+        // Track for next phase handoff (both single-path and multi-path)
         lastPhaseWorktree = worktreePath;
         lastPhaseOutputFile = phase.output_file;
         lastPhaseOutputContent = parsed.rawContent;
+        phaseWorktrees.set(phaseName, worktreePath);
+        phaseOutputs.set(phaseName, parsed.rawContent);
 
         const durationMs = Date.now() - startTime;
         emit("PHASE_COMPLETE", phaseName, {
           status: parsed.status,
           duration_ms: durationMs,
+          tokens_in: completeEvent?.tokensIn,
+          tokens_out: completeEvent?.tokensOut,
+          cost_usd: completeEvent?.costUsd,
+          model_used: completeEvent?.modelUsed,
         });
 
         return { status: parsed.status };
       });
+    };
+
+    for (const [phaseName, phase] of Object.entries(config.phases)) {
+      if (phase.type === "final") continue;
+
+      if (phase.type === "fork" && phase.fork_phases) {
+        // Fork phase: create actors for each child, not for the fork itself
+        for (const childName of phase.fork_phases) {
+          const childPhase = config.phases[childName];
+          if (!childPhase) continue;
+          actors[`run_${childName}`] = createPhaseActor(childName, childPhase);
+        }
+        continue;
+      }
+
+      actors[`run_${phaseName}`] = createPhaseActor(phaseName, phase);
     }
 
     // Provide real actors to the machine
@@ -212,6 +262,6 @@ export async function runPipeline(
       error: errorMsg,
     };
   } finally {
-    worktreeManager.cleanup();
+    await worktreeManager.cleanup();
   }
 }

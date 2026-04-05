@@ -26,17 +26,72 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
   const phaseNames = new Set(Object.keys(config.phases));
   const agentNames = new Set(Object.keys(config.agents));
 
+  // Collect fork child phases (they are referenced but have special rules)
+  const forkChildPhases = new Set<string>();
+  for (const [, phase] of Object.entries(config.phases)) {
+    if (phase.type === "fork" && phase.fork_phases) {
+      for (const child of phase.fork_phases) {
+        forkChildPhases.add(child);
+      }
+    }
+  }
+
   // Validate each phase
   for (const [name, phase] of Object.entries(config.phases)) {
-    // Agent reference
-    if (phase.type !== "final" && phase.agent && !agentNames.has(phase.agent)) {
+    // Fork phase validation
+    if (phase.type === "fork") {
+      if (!phase.fork_phases || phase.fork_phases.length === 0) {
+        errors.push({
+          path: `phases.${name}.phases`,
+          message: "Fork phase must list child phases in 'phases'",
+        });
+      } else {
+        for (const child of phase.fork_phases) {
+          if (!phaseNames.has(child)) {
+            errors.push({
+              path: `phases.${name}.phases`,
+              message: `Fork child "${child}" does not exist. Available phases: ${[...phaseNames].join(", ")}`,
+            });
+          }
+          const childPhase = config.phases[child];
+          if (childPhase?.type === "fork") {
+            errors.push({
+              path: `phases.${name}.phases`,
+              message: `Nested fork not supported: child "${child}" is also a fork phase`,
+            });
+          }
+          if (childPhase?.next_if) {
+            errors.push({
+              path: `phases.${child}.next_if`,
+              message: `Fork child "${child}" cannot use next_if (conditional routing not supported in parallel branches)`,
+            });
+          }
+        }
+      }
+      if (!phase.next) {
+        errors.push({
+          path: `phases.${name}.next`,
+          message: "Fork phase must have 'next' to specify the join target",
+        });
+      }
+      // Fork phases don't need agent, output_file, or next_if — skip remaining checks
+      continue;
+    }
+
+    // Agent reference (required for non-final, non-fork phases)
+    if (phase.type !== "final" && !phase.agent) {
+      errors.push({
+        path: `phases.${name}.agent`,
+        message: "Non-final phase must have an agent",
+      });
+    } else if (phase.type !== "final" && phase.agent && !agentNames.has(phase.agent)) {
       errors.push({
         path: `phases.${name}.agent`,
         message: `References nonexistent agent "${phase.agent}". Available agents: ${[...agentNames].join(", ")}`,
       });
     }
 
-    // Non-final phases must have output_file
+    // Non-final phases must have output_file (skip fork children — they need output_file too)
     if (phase.type !== "final" && !phase.output_file) {
       errors.push({
         path: `phases.${name}.output_file`,
@@ -44,12 +99,14 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
       });
     }
 
-    // Must have exactly one of: next, next_if, or type: final
+    // Must have exactly one of: next, next_if, type: final, or be a fork child
     const hasNext = !!phase.next;
     const hasNextIf = !!phase.next_if && Object.keys(phase.next_if).length > 0;
     const isFinal = phase.type === "final";
+    const isForkChild = forkChildPhases.has(name);
 
-    if (!hasNext && !hasNextIf && !isFinal) {
+    // Fork children don't need next/next_if — they implicitly complete within the fork
+    if (!hasNext && !hasNextIf && !isFinal && !isForkChild) {
       errors.push({
         path: `phases.${name}`,
         message: "Phase must have 'next', 'next_if', or 'type: final'",

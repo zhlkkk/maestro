@@ -1,6 +1,6 @@
-import { execFileSync } from "node:child_process";
 import { copyFileSync, mkdirSync, rmSync, existsSync, statSync } from "node:fs";
 import { join, dirname } from "node:path";
+import { execGit } from "./git.js";
 
 export interface HandoffResult {
   added: string[];
@@ -12,16 +12,12 @@ export interface HandoffResult {
  * Copy changed files from source worktree to target worktree.
  * Uses `git status --porcelain` to detect all changes (tracked + untracked).
  */
-export function copyHandoff(sourceWorktree: string, targetWorktree: string): HandoffResult {
+export async function copyHandoff(sourceWorktree: string, targetWorktree: string): Promise<HandoffResult> {
   const result: HandoffResult = { added: [], modified: [], deleted: [] };
 
   let statusOutput: string;
   try {
-    statusOutput = execFileSync("git", ["status", "--porcelain", "-uall"], {
-      cwd: sourceWorktree,
-      encoding: "utf-8",
-      stdio: ["pipe", "pipe", "pipe"],
-    }).trim();
+    statusOutput = (await execGit(["status", "--porcelain", "-uall"], sourceWorktree)).trim();
   } catch {
     return result;
   }
@@ -94,4 +90,50 @@ function deleteFileInTarget(target: string, relativePath: string): void {
   if (existsSync(dstPath)) {
     rmSync(dstPath, { force: true });
   }
+}
+
+const MAX_DIFF_SIZE = 50 * 1024; // 50KB
+
+/**
+ * Generate a diff summary for a worktree's changes.
+ * Used for incremental handoff in retry loops — provides a concise
+ * view of what changed instead of full file content.
+ */
+export async function generateDiffSummary(worktreePath: string): Promise<string> {
+  const parts: string[] = [];
+
+  // Get diff stat (file-level summary)
+  try {
+    const stat = (await execGit(["diff", "--stat", "HEAD"], worktreePath)).trim();
+    if (stat) {
+      parts.push("### Changes Summary\n```\n" + stat + "\n```");
+    }
+  } catch {
+    // No git diff available — fall back to status
+  }
+
+  // Get actual diff (limited size)
+  try {
+    let diff = (await execGit(["diff", "HEAD"], worktreePath)).trim();
+    if (diff) {
+      if (Buffer.byteLength(diff, "utf-8") > MAX_DIFF_SIZE) {
+        diff = diff.slice(0, MAX_DIFF_SIZE) + "\n... (truncated, see worktree for full diff)";
+      }
+      parts.push("### Diff\n```diff\n" + diff + "\n```");
+    }
+  } catch {
+    // No diff available
+  }
+
+  // Also capture untracked files
+  try {
+    const untracked = (await execGit(["ls-files", "--others", "--exclude-standard"], worktreePath)).trim();
+    if (untracked) {
+      parts.push("### New Files\n" + untracked.split("\n").map(f => `- ${f}`).join("\n"));
+    }
+  } catch {
+    // Ignore
+  }
+
+  return parts.join("\n\n") || "(no changes detected)";
 }

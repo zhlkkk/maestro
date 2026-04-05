@@ -1,16 +1,39 @@
 {
   "name": "maestro-cli",
-  "version": "0.1.0",
-  "description": "Multi-Agent R&D Orchestration Engine",
+  "version": "0.2.0",
+  "description": "Paradigm-as-Code: Multi-Agent R&D Orchestration Engine",
   "type": "module",
-  "private": true,
   "bin": {
     "maestro": "./src/index.ts"
   },
+  "files": [
+    "src/",
+    "paradigms/",
+    "prompts/",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "ai",
+    "agent",
+    "orchestration",
+    "multi-agent",
+    "paradigm-as-code",
+    "state-machine",
+    "xstate",
+    "cli"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/user/maestro"
+  },
+  "license": "MIT",
   "scripts": {
     "dev": "bun run src/index.ts",
     "test": "bun test",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "build": "bun build src/index.ts --compile --outfile=maestro",
+    "dry-run:all": "bun run src/index.ts run paradigms/tdd-strict.yaml --task test --dry-run && bun run src/index.ts run paradigms/combined-workflow.yaml --task test --dry-run && bun run src/index.ts run paradigms/bug-investigation.yaml --task test --dry-run"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.91",

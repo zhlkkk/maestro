@@ -19,8 +19,5 @@ export type MaestroEventType =
   | "PIPELINE_COMPLETE"
   | "PIPELINE_FAILED";
 
-/** Events emitted by agent drivers */
-export type AgentEvent =
-  | { type: "output"; text: string }
-  | { type: "complete"; result: string; sessionId?: string }
-  | { type: "error"; error: Error };
+// Re-export AgentEvent and AgentDriverFn from the canonical source
+export type { AgentEvent, AgentDriverFn } from "./driver/types.js";

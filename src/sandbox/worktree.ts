@@ -1,7 +1,7 @@
-import { execFileSync } from "node:child_process";
 import { existsSync, mkdirSync, rmSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { randomUUID } from "node:crypto";
+import { execGit } from "./git.js";
 
 const WORKTREE_BASE = ".maestro/worktrees";
 
@@ -10,10 +10,10 @@ export interface WorktreeManager {
   repoRoot: string;
 
   /** Create or reuse a worktree for a phase */
-  getWorktree(phaseName: string): string;
+  getWorktree(phaseName: string): Promise<string>;
 
   /** Clean up all worktrees for this run */
-  cleanup(): void;
+  cleanup(): Promise<void>;
 }
 
 /**
@@ -30,7 +30,7 @@ export function createWorktreeManager(repoRoot: string, runId?: string): Worktre
     runId: id,
     repoRoot: resolvedRoot,
 
-    getWorktree(phaseName: string): string {
+    async getWorktree(phaseName: string): Promise<string> {
       const existing = created.get(phaseName);
       if (existing && existsSync(existing)) {
         return existing;
@@ -40,39 +40,27 @@ export function createWorktreeManager(repoRoot: string, runId?: string): Worktre
       mkdirSync(worktreePath, { recursive: true });
 
       try {
-        execFileSync("git", ["worktree", "add", "--detach", worktreePath, "HEAD"], {
-          cwd: resolvedRoot,
-          stdio: "pipe",
-        });
+        await execGit(["worktree", "add", "--detach", worktreePath, "HEAD"], resolvedRoot);
       } catch {
         // If worktree already exists (stale), remove and retry
         try {
-          execFileSync("git", ["worktree", "remove", "--force", worktreePath], {
-            cwd: resolvedRoot,
-            stdio: "pipe",
-          });
+          await execGit(["worktree", "remove", "--force", worktreePath], resolvedRoot);
         } catch {
           // Ignore
         }
         rmSync(worktreePath, { recursive: true, force: true });
         mkdirSync(worktreePath, { recursive: true });
-        execFileSync("git", ["worktree", "add", "--detach", worktreePath, "HEAD"], {
-          cwd: resolvedRoot,
-          stdio: "pipe",
-        });
+        await execGit(["worktree", "add", "--detach", worktreePath, "HEAD"], resolvedRoot);
       }
 
       created.set(phaseName, worktreePath);
       return worktreePath;
     },
 
-    cleanup() {
+    async cleanup(): Promise<void> {
       for (const [, worktreePath] of created) {
         try {
-          execFileSync("git", ["worktree", "remove", "--force", worktreePath], {
-            cwd: resolvedRoot,
-            stdio: "pipe",
-          });
+          await execGit(["worktree", "remove", "--force", worktreePath], resolvedRoot);
         } catch {
           rmSync(worktreePath, { recursive: true, force: true });
         }
@@ -84,7 +72,7 @@ export function createWorktreeManager(repoRoot: string, runId?: string): Worktre
       }
 
       try {
-        execFileSync("git", ["worktree", "prune"], { cwd: resolvedRoot, stdio: "pipe" });
+        await execGit(["worktree", "prune"], resolvedRoot);
       } catch {
         // Ignore
       }
@@ -95,7 +83,7 @@ export function createWorktreeManager(repoRoot: string, runId?: string): Worktre
 /**
  * Clean up stale worktrees from crashed runs.
  */
-export function cleanupStaleWorktrees(repoRoot: string): void {
+export async function cleanupStaleWorktrees(repoRoot: string): Promise<void> {
   const resolvedRoot = resolve(repoRoot);
   const baseDir = join(resolvedRoot, WORKTREE_BASE);
 
@@ -110,10 +98,7 @@ export function cleanupStaleWorktrees(repoRoot: string): void {
         for (const phase of phaseDirs) {
           const worktreePath = join(runDir, phase);
           try {
-            execFileSync("git", ["worktree", "remove", "--force", worktreePath], {
-              cwd: resolvedRoot,
-              stdio: "pipe",
-            });
+            await execGit(["worktree", "remove", "--force", worktreePath], resolvedRoot);
           } catch {
             rmSync(worktreePath, { recursive: true, force: true });
           }
@@ -124,7 +109,7 @@ export function cleanupStaleWorktrees(repoRoot: string): void {
       rmSync(runDir, { recursive: true, force: true });
     }
 
-    execFileSync("git", ["worktree", "prune"], { cwd: resolvedRoot, stdio: "pipe" });
+    await execGit(["worktree", "prune"], resolvedRoot);
   } catch {
     // Best effort cleanup
   }

@@ -13,6 +13,8 @@ export interface MachineContext {
   lastStatus: string;
   retries: Record<string, number>;
   task: string;
+  /** Outputs from parallel fork children, keyed by child phase name */
+  parallelOutputs: Record<string, PhaseOutput>;
 }
 
 /** Output returned by each phase actor */
@@ -50,6 +52,69 @@ export function translateToMachine(config: ParadigmConfig): TranslatedMachine {
   for (const [phaseName, phase] of phaseEntries) {
     if (phase.type === "final") {
       states[phaseName] = { type: "final" as const };
+      continue;
+    }
+
+    // Fork phase: translate to xstate parallel compound state
+    if (phase.type === "fork" && phase.fork_phases && phase.next) {
+      const childStates: Record<string, any> = {};
+
+      for (const childName of phase.fork_phases) {
+        const childActorName = `run_${childName}`;
+        actors[childActorName] = fromPromise(async () => {
+          throw new Error(`Actor ${childActorName} not provided. Use machine.provide() to inject.`);
+        });
+
+        childStates[childName] = {
+          initial: "running",
+          states: {
+            running: {
+              invoke: {
+                src: childActorName,
+                onDone: {
+                  target: "done",
+                  actions: assign({
+                    parallelOutputs: ({ context, event }: any) => ({
+                      ...context.parallelOutputs,
+                      [childName]: event.output as PhaseOutput,
+                    }),
+                  }),
+                },
+                onError: {
+                  target: "failed",
+                  actions: assign({
+                    parallelOutputs: ({ context, event }: any) => ({
+                      ...context.parallelOutputs,
+                      [childName]: { status: "__ERROR", error: String(event.error ?? "unknown") },
+                    }),
+                  }),
+                },
+              },
+            },
+            done: { type: "final" as const },
+            failed: { type: "final" as const },
+          },
+        };
+      }
+
+      // Guard: check if any fork child failed before proceeding
+      const forkFailGuardName = `${phaseName}_has_failed_child`;
+      guards[forkFailGuardName] = ({ context }: { context: MachineContext }) => {
+        for (const childName of phase.fork_phases!) {
+          const output = context.parallelOutputs[childName];
+          if (output && (output as any).status === "__ERROR") return true;
+        }
+        return false;
+      };
+
+      states[phaseName] = {
+        type: "parallel" as const,
+        states: childStates,
+        onDone: [
+          { guard: forkFailGuardName, target: "__FAILED" },
+          { target: phase.next },
+        ],
+      };
       continue;
     }
 
@@ -148,6 +213,7 @@ export function translateToMachine(config: ParadigmConfig): TranslatedMachine {
       lastStatus: "",
       retries: {},
       task: "",
+      parallelOutputs: {},
     },
     states,
   });
