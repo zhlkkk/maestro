@@ -61,10 +61,11 @@ export function createSubprocessDriver(
 
     // Wire up abort handling: SIGTERM → 5 s grace → SIGKILL
     let aborted = false;
+    let killTimerId: ReturnType<typeof setTimeout> | undefined;
     const onAbort = () => {
       aborted = true;
       proc.kill("SIGTERM");
-      setTimeout(() => {
+      killTimerId = setTimeout(() => {
         try {
           proc.kill("SIGKILL");
         } catch {
@@ -140,8 +141,9 @@ export function createSubprocessDriver(
     // Wait for process exit
     const exitCode = await proc.exited;
 
-    // Clean up abort listener
+    // Clean up abort listener and SIGKILL timer
     abortController.signal.removeEventListener("abort", onAbort);
+    if (killTimerId) clearTimeout(killTimerId);
 
     if (aborted) {
       yield {

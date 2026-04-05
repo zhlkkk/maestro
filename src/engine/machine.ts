@@ -82,6 +82,12 @@ export function translateToMachine(config: ParadigmConfig): TranslatedMachine {
                 },
                 onError: {
                   target: "failed",
+                  actions: assign({
+                    parallelOutputs: ({ context, event }: any) => ({
+                      ...context.parallelOutputs,
+                      [childName]: { status: "__ERROR", error: String(event.error ?? "unknown") },
+                    }),
+                  }),
                 },
               },
             },
@@ -91,10 +97,23 @@ export function translateToMachine(config: ParadigmConfig): TranslatedMachine {
         };
       }
 
+      // Guard: check if any fork child failed before proceeding
+      const forkFailGuardName = `${phaseName}_has_failed_child`;
+      guards[forkFailGuardName] = ({ context }: { context: MachineContext }) => {
+        for (const childName of phase.fork_phases!) {
+          const output = context.parallelOutputs[childName];
+          if (output && (output as any).status === "__ERROR") return true;
+        }
+        return false;
+      };
+
       states[phaseName] = {
         type: "parallel" as const,
         states: childStates,
-        onDone: { target: phase.next },
+        onDone: [
+          { guard: forkFailGuardName, target: "__FAILED" },
+          { target: phase.next },
+        ],
       };
       continue;
     }

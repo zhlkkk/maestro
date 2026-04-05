@@ -78,8 +78,13 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
       continue;
     }
 
-    // Agent reference
-    if (phase.type !== "final" && phase.agent && !agentNames.has(phase.agent)) {
+    // Agent reference (required for non-final, non-fork phases)
+    if (phase.type !== "final" && !phase.agent) {
+      errors.push({
+        path: `phases.${name}.agent`,
+        message: "Non-final phase must have an agent",
+      });
+    } else if (phase.type !== "final" && phase.agent && !agentNames.has(phase.agent)) {
       errors.push({
         path: `phases.${name}.agent`,
         message: `References nonexistent agent "${phase.agent}". Available agents: ${[...agentNames].join(", ")}`,

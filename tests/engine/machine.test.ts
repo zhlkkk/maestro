@@ -383,7 +383,7 @@ phases:
     expect(snapshot.context.parallelOutputs.FixBE).toEqual({ status: "fixed" });
   });
 
-  test("fork child error transitions to child failed state (parallel still completes)", async () => {
+  test("fork child error routes to __FAILED (fail-fast)", async () => {
     const config = parseParadigm(`
 name: "ForkError"
 agents:
@@ -416,9 +416,12 @@ phases:
     const actor = createActor(provided);
     actor.start();
 
-    // Both children reach final (one via done, one via failed), so parallel completes
+    // Fork should fail because ChildB errored — guard routes to __FAILED
     const snapshot = await waitFor(actor, (s) => s.status === "done", { timeout: 5000 });
-    expect(snapshot.value).toBe("Done");
+    expect(snapshot.value).toBe("__FAILED");
+    // Error should be recorded in parallelOutputs
+    expect(snapshot.context.parallelOutputs.ChildB).toBeDefined();
+    expect((snapshot.context.parallelOutputs.ChildB as any).status).toBe("__ERROR");
   });
 
   test("mixed paradigm: serial → fork → serial → conditional", async () => {
