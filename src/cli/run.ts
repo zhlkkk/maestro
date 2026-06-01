@@ -7,6 +7,7 @@ import { runPipeline } from "../engine/runner.js";
 import { createEventLogger } from "../engine/logger.js";
 import { generateReport } from "../engine/report.js";
 import { randomUUID } from "node:crypto";
+import { findInstalledParadigm } from "./paradigm-registry.js";
 
 export interface RunCommandOptions {
   task: string;
@@ -18,7 +19,7 @@ export async function runCommand(
   options: RunCommandOptions
 ): Promise<number> {
   // Validate inputs
-  const resolvedPath = resolve(paradigmPath);
+  const resolvedPath = resolveParadigmPath(paradigmPath);
   if (!existsSync(resolvedPath)) {
     console.error(`Error: Paradigm file not found: ${resolvedPath}`);
     return 2;
@@ -124,4 +125,12 @@ export async function runCommand(
   } finally {
     process.removeListener("SIGINT", sigintHandler);
   }
+}
+
+function resolveParadigmPath(paradigmPath: string): string {
+  const resolvedPath = resolve(paradigmPath);
+  if (existsSync(resolvedPath)) return resolvedPath;
+
+  const installed = findInstalledParadigm(paradigmPath);
+  return installed?.paradigm ?? resolvedPath;
 }

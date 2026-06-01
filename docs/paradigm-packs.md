@@ -27,6 +27,57 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test" --dry-run
 
 默认 `generic-cli` 命令会带说明退出，避免误跑。live run 前需要替换成真实本地命令。
 
+## 安装 pack
+
+安装本地 pack：
+
+```bash
+bun run dev install ./demo-paradigm
+bun run dev run demo --task "smoke test" --dry-run
+```
+
+安装 Git source：
+
+```bash
+bun run dev install https://github.com/example/maestro-pack.git
+```
+
+默认安装位置是 `.maestro/paradigms/<pack-name>`。pack name 来自 `paradigm.yaml` 的 `name` 字段，会被标准化成小写 URL-safe 名称。安装同名 pack 时默认失败，可用 `--force` 替换：
+
+```bash
+bun run dev install ./demo-paradigm --force
+```
+
+`--dry-run` 会执行解析、结构校验和 driver 兼容性检查，但不写文件：
+
+```bash
+bun run dev install ./demo-paradigm --dry-run
+```
+
+安装时会维护本地 registry index：
+
+```json
+{
+  "version": 1,
+  "paradigms": [
+    {
+      "name": "demo",
+      "version": "0.1.0",
+      "source": "./demo-paradigm",
+      "path": ".maestro/paradigms/demo",
+      "paradigm": ".maestro/paradigms/demo/paradigm.yaml"
+    }
+  ]
+}
+```
+
+安装兼容性检查包括：
+
+- source 必须是包含 `paradigm.yaml` 的目录，或根目录包含 `paradigm.yaml` 的 Git source。
+- `paradigm.yaml` 必须能解析并通过 `validateParadigm`。
+- `maestro_version` 必须兼容当前 schema，当前支持 `"1"`。
+- 所有 agent driver 必须已在当前 Maestro driver registry 注册。
+
 ## Metadata
 
 pack metadata 写在 `paradigm.yaml` 顶层：
@@ -89,4 +140,4 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test"
 
 ## 后续 M3.x
 
-远程 install、签名 registry metadata 和外部 driver 插件加载，会在本地 pack authoring 稳定后继续推进。
+签名 registry metadata、远程 registry 索引和外部 driver 插件加载，会在本地/Git pack 安装稳定后继续推进。

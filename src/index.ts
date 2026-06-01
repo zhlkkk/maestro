@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { runCommand } from "./cli/run.js";
 import { initParadigmCommand } from "./cli/init.js";
+import { installCommand } from "./cli/install.js";
 import { replayCommand, type PlaybackSpeed } from "./cli/replay.js";
 
 const packageJson = JSON.parse(
@@ -29,6 +30,20 @@ program
     opts: { dir?: string; dryRun?: boolean; force?: boolean }
   ) => {
     const exitCode = await initParadigmCommand(name, opts);
+    process.exit(exitCode);
+  });
+
+program
+  .command("install <source>")
+  .description("Install a local or Git paradigm pack")
+  .option("--dir <dir>", "Registry directory for installed packs")
+  .option("--dry-run", "Validate and print the install target without writing")
+  .option("--force", "Replace an existing installed pack")
+  .action(async (
+    source: string,
+    opts: { dir?: string; dryRun?: boolean; force?: boolean }
+  ) => {
+    const exitCode = await installCommand(source, opts);
     process.exit(exitCode);
   });
 

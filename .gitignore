@@ -36,6 +36,7 @@ report.[0-9]_.[0-9]_.[0-9]_.[0-9]_.json
 
 # Maestro runtime artifacts
 .maestro/worktrees/
+.maestro/paradigms/
 .maestro/events-*.jsonl
 .maestro/reports/
 .context/

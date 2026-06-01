@@ -11,7 +11,7 @@ bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
 ## 当前能力
 
 - 多驱动执行：内置 `claude-code`、`codex`、`gemini`，并支持 `generic-cli` 适配本地命令。
-- 本地范式包：`maestro init paradigm` 可生成自定义 paradigm pack 骨架。
+- 本地范式包：`maestro init paradigm` 可生成自定义 paradigm pack 骨架，`maestro install` 可安装本地或 Git pack。
 - YAML 状态机：支持线性阶段、条件路由、重试上限、超时控制和终态。
 - Git 隔离：每个 phase 使用独立 git worktree，阶段之间通过 diff / 文件复制交接。
 - 输出约定：phase 必须产出带 YAML frontmatter 的 `output_file`，其中 `status` 驱动条件路由。
@@ -69,6 +69,21 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test" --dry-run
 ```
 
 本地 pack 格式、metadata 和 `generic-cli` 环境变量见 [docs/paradigm-packs.md](docs/paradigm-packs.md)。
+
+### 安装范式包
+
+```bash
+bun run dev install ./demo-paradigm
+bun run dev run demo --task "smoke test" --dry-run
+```
+
+也可以安装 Git source：
+
+```bash
+bun run dev install https://github.com/example/maestro-pack.git
+```
+
+安装后的 pack 会写入 `.maestro/paradigms/index.json`，默认不会进入 git。
 
 ### 回放历史运行
 
@@ -184,7 +199,7 @@ CLI command
 ```text
 maestro/
   src/
-    cli/          # init / run / replay 命令
+    cli/          # init / install / run / replay 命令
     dashboard/    # Ink 终端 UI 组件，目前未接入默认 run 输出
     driver/       # driver 接口、registry、Claude/Codex/Gemini 实现
     engine/       # parser、validator、xstate machine、runner、logger、report

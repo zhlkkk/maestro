@@ -24,8 +24,10 @@ src/index.ts
 
 | 模块 | 文件 | 职责 |
 | --- | --- | --- |
-| CLI 入口 | `src/index.ts` | 注册 `init`、`run` 和 `replay` 命令 |
+| CLI 入口 | `src/index.ts` | 注册 `init`、`install`、`run` 和 `replay` 命令 |
 | init 命令 | `src/cli/init.ts` | 生成本地 paradigm pack scaffold |
+| install 命令 | `src/cli/install.ts` | 安装本地路径或 Git source 的 paradigm pack |
+| pack registry | `src/cli/paradigm-registry.ts` | 维护 `.maestro/paradigms/index.json` 并按名称解析已安装范式 |
 | run 命令 | `src/cli/run.ts` | 输入校验、解析范式、dry-run、创建 logger、启动 pipeline、生成 report |
 | replay 命令 | `src/cli/replay.ts` | 读取 JSONL 事件并按速度回放 |
 | Parser | `src/engine/parser.ts` | 解析 YAML，解析 agents / phases / handoff_routing，解析相对 prompt 路径 |
@@ -135,7 +137,7 @@ status: approved
 ## 执行流程
 
 ```text
-1. CLI 校验 paradigm 路径和 --task
+1. CLI 校验 paradigm 路径或已安装范式名称，以及 --task
 2. parseParadigmFile 读取 YAML
 3. validateParadigm 校验结构和路由
 4. dry-run 模式：输出 phase 拓扑后退出
@@ -180,6 +182,45 @@ Runner emit()
   -> ReportGenerator markdown report
   -> replay command
 ```
+
+## Paradigm pack 安装
+
+`maestro install <source>` 支持两类 source：
+
+- 本地目录：目录根部必须包含 `paradigm.yaml`。
+- Git URL：通过 `git clone --depth 1` 克隆到临时目录，根部必须包含 `paradigm.yaml`。
+
+安装流程：
+
+```text
+source
+  -> resolve local directory or clone Git URL
+  -> parse paradigm.yaml
+  -> validateParadigm
+  -> validateDrivers
+  -> copy pack into .maestro/paradigms/<sanitized-name>
+  -> update .maestro/paradigms/index.json
+```
+
+本地 registry index 使用版本化 JSON：
+
+```json
+{
+  "version": 1,
+  "paradigms": [
+    {
+      "name": "demo",
+      "version": "0.1.0",
+      "source": "./demo-paradigm",
+      "installedAt": "2026-06-01T00:00:00.000Z",
+      "path": ".maestro/paradigms/demo",
+      "paradigm": ".maestro/paradigms/demo/paradigm.yaml"
+    }
+  ]
+}
+```
+
+`maestro run <name>` 如果找不到同名本地文件，会从 `.maestro/paradigms/index.json` 中查找已安装范式并运行对应的 `paradigm.yaml`。
 
 ## Git worktree 与 handoff
 
@@ -308,5 +349,5 @@ Claude driver 使用 SDK；Codex、Gemini 和 Generic CLI driver 使用共享 su
 - 默认 `run` 输出尚未接入 Ink dashboard；dashboard 组件已有测试覆盖，但当前 CLI 使用 console 输出。
 - fork/join 已有 sibling abort 和 join 前冲突保护，复杂并行恢复仍未生产化。
 - `generic-cli` 只提供本地命令合同，不加载外部 driver 插件，也不做 registry 信任校验。
-- 远程 paradigm install、签名和 registry 索引仍属于后续 M3.x。
+- `maestro install` 支持本地目录和 Git URL，但还没有远程 registry 搜索、签名校验或 trust policy。
 - fork/join 状态机已实现，真实并行 handoff 和失败取消语义仍需继续加强。
