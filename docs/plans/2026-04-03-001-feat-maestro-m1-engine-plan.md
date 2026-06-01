@@ -1,12 +1,14 @@
 ---
 title: "feat: Maestro M1 Engine Core — Multi-Agent Orchestration Engine"
 type: feat
-status: active
+status: completed
 date: 2026-04-03
 origin: docs/brainstorms/2026-04-03-maestro-roadmap-requirements.md
 ---
 
 # feat: Maestro M1 Engine Core
+
+> 实现状态：当前代码库已完成 M1。本文件保留为原始 M1 执行计划，下面的 checkbox 是历史计划状态，不代表实时进度。当前进度请以 `docs/roadmap.md` 为准。
 
 ## Overview
 
