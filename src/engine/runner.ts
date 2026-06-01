@@ -297,7 +297,10 @@ export async function runPipeline(
         const parsed = parseOutputFile(outputContent, phase.output_file);
 
         if (!parsed.success) {
-          emitPhaseFailed(parsed.error, { reason: "output_parse_error" });
+          emitPhaseFailed(parsed.error, {
+            reason: "output_parse_error",
+            output_file: phase.output_file,
+          });
           abortForkSiblings(parsed.error);
           throw new Error(parsed.error);
         }
@@ -316,6 +319,7 @@ export async function runPipeline(
           tokens_out: completeEvent?.tokensOut,
           cost_usd: completeEvent?.costUsd,
           model_used: completeEvent?.modelUsed,
+          output_file: phase.output_file,
         });
 
         return { status: parsed.status };

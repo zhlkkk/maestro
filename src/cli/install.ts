@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join, resolve, sep } from "node:path";
 import { parseParadigmFile } from "../engine/parser.js";
 import { validateParadigm } from "../engine/validator.js";
-import { validateDrivers } from "../driver/registry.js";
+import { loadDriverPlugins, validateDrivers } from "../driver/registry.js";
 import {
   getParadigmRegistryRoot,
   readParadigmIndex,
@@ -55,6 +55,7 @@ export async function installCommand(
     }
 
     try {
+      await loadDriverPlugins(config.driver_plugins);
       validateDrivers([...new Set(Object.values(config.agents).map((agent) => agent.driver))]);
     } catch (err) {
       console.error(`Driver compatibility check failed: ${err instanceof Error ? err.message : err}`);

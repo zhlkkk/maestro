@@ -11,7 +11,7 @@
 - 校验器：已覆盖 agent 引用、phase 输出、终态、路由目标、handoff 限制、死循环、fork child 限制。
 - 状态机：已支持线性、条件路由、重试、fork/join。
 - Driver：已完成 `claude-code`、`codex`、`gemini`、`generic-cli` 内置 driver 和 registry。
-- 范式生态：已开始 M3，本地 paradigm pack metadata、`maestro init paradigm` scaffold、`maestro install` 本地/Git 安装和本地 registry index 已落地。
+- 范式生态：已开始 M3，本地 paradigm pack metadata、`maestro init paradigm` scaffold、`maestro install` 本地/Git 安装、本地 registry index、driver 插件加载和 report artifact/decision summary 已落地。
 - 沙箱：已完成 async git helper、worktree 创建/复用/清理、handoff 文件复制、retry diff summary。
 - 审计：已完成 JSONL event log、Markdown run report、replay。
 - 内置范式：已有 `tdd-strict`、`combined-workflow`、`bug-investigation`。
@@ -115,13 +115,14 @@ M2 建议按“公开 beta”完成，而不是等待所有并行语义达到生
 - `maestro init paradigm <name>`：生成本地 pack 骨架，支持 `--dir`、`--dry-run`、`--force`。
 - `maestro install <source>`：安装本地目录或 Git URL pack，支持 `--dir`、`--dry-run`、`--force`。
 - 本地 registry index：`.maestro/paradigms/index.json`，并支持 `maestro run <installed-name>`。
+- driver 插件加载：`driver_plugins` 可注册本地 JS/TS 模块导出的 `AgentDriverFn`。
+- report 增强：生成 Artifact Index 和 Decision Summary，重试 phase 以最终完成事件为准。
 - 本地 pack 文档：`docs/paradigm-packs.md`。
 
 后续：
 
 - 远程 registry 搜索和签名/trust policy。
-- driver 插件机制。
-- 更强的 report，可包含 diff 摘要、产物索引和关键决策。
+- 更强的 report，可继续补充 diff 摘要和产物内容预览。
 - Web UI 或更完整 TUI。
 
 ### M4：团队工作流

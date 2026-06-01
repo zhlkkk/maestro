@@ -8,6 +8,7 @@ import { createEventLogger } from "../engine/logger.js";
 import { generateReport } from "../engine/report.js";
 import { randomUUID } from "node:crypto";
 import { findInstalledParadigm } from "./paradigm-registry.js";
+import { loadDriverPlugins, validateDrivers } from "../driver/registry.js";
 
 export interface RunCommandOptions {
   task: string;
@@ -41,6 +42,14 @@ export async function runCommand(
     config = parseParadigmFile(resolvedPath);
   } catch (err) {
     console.error(`Error parsing paradigm: ${err instanceof Error ? err.message : err}`);
+    return 2;
+  }
+
+  try {
+    await loadDriverPlugins(config.driver_plugins);
+    validateDrivers([...new Set(Object.values(config.agents).map((agent) => agent.driver))]);
+  } catch (err) {
+    console.error(`Driver compatibility check failed: ${err instanceof Error ? err.message : err}`);
     return 2;
   }
 

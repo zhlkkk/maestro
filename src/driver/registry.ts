@@ -3,6 +3,7 @@ import { runAgent as claudeRunAgent } from "./claude.js";
 import { runCodexAgent } from "./codex.js";
 import { runGeminiAgent } from "./gemini.js";
 import { runGenericCliAgent } from "./generic-cli.js";
+import { pathToFileURL } from "node:url";
 
 type DriverFactory = () => AgentDriverFn;
 
@@ -48,6 +49,38 @@ export function validateDrivers(driverNames: string[]): void {
     throw new Error(
       `Unregistered driver(s): ${unknown.join(", ")}. Available: ${available}`
     );
+  }
+}
+
+/**
+ * Load a local driver plugin module and register it under the provided name.
+ * Plugin modules may export the driver as default, runAgent, or runDriver.
+ */
+export async function loadDriverPlugin(name: string, pluginPath: string): Promise<void> {
+  const moduleUrl = pathToFileURL(pluginPath).href;
+  const plugin = await import(moduleUrl) as {
+    default?: unknown;
+    runAgent?: unknown;
+    runDriver?: unknown;
+  };
+  const driver = plugin.default ?? plugin.runAgent ?? plugin.runDriver;
+
+  if (typeof driver !== "function") {
+    throw new Error(
+      `Driver plugin "${name}" must export default, runAgent, or runDriver as a function`
+    );
+  }
+
+  registerDriver(name, () => driver as AgentDriverFn);
+}
+
+export async function loadDriverPlugins(
+  plugins: Record<string, string> | undefined
+): Promise<void> {
+  if (!plugins) return;
+
+  for (const [name, pluginPath] of Object.entries(plugins)) {
+    await loadDriverPlugin(name, pluginPath);
   }
 }
 

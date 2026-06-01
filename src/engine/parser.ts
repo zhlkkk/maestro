@@ -47,6 +47,7 @@ export function parseParadigm(
     tags: optionalStringArray(obj, "tags"),
     license: optionalString(obj, "license"),
     homepage: optionalString(obj, "homepage"),
+    driver_plugins: parseDriverPlugins(obj.driver_plugins, baseDir),
     entry_agent: optionalString(obj, "entry_agent"),
     agents: parseAgents(obj.agents),
     phases: parsePhases(obj.phases, baseDir),
@@ -137,6 +138,19 @@ function parseRouting(raw: unknown): Record<string, string[]> | undefined {
     routing[k] = Array.isArray(v) ? v.map(String) : [];
   }
   return routing;
+}
+
+function parseDriverPlugins(raw: unknown, baseDir: string): Record<string, string> | undefined {
+  if (raw === undefined) return undefined;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
+
+  const plugins: Record<string, string> = {};
+  for (const [name, pluginPath] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof pluginPath === "string") {
+      plugins[name] = resolve(baseDir, pluginPath);
+    }
+  }
+  return plugins;
 }
 
 function expectString(obj: Record<string, unknown>, key: string): string {

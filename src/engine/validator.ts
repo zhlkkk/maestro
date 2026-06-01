@@ -16,6 +16,7 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
   }
 
   validateMetadata(config, errors);
+  validateDriverPlugins(config, errors);
 
   // Must have at least one agent and one phase
   if (Object.keys(config.agents).length === 0) {
@@ -224,6 +225,35 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
   }
 
   return errors;
+}
+
+function validateDriverPlugins(config: ParadigmConfig, errors: ValidationError[]): void {
+  if (config.driver_plugins === undefined) return;
+
+  const entries = Object.entries(config.driver_plugins);
+  if (entries.length === 0) {
+    errors.push({
+      path: "driver_plugins",
+      message: "driver_plugins must be an object mapping driver names to plugin files",
+    });
+    return;
+  }
+
+  for (const [name, pluginPath] of entries) {
+    if (name.trim() === "") {
+      errors.push({
+        path: "driver_plugins",
+        message: "driver plugin names must be non-empty strings",
+      });
+    }
+
+    if (pluginPath.trim() === "") {
+      errors.push({
+        path: `driver_plugins.${name}`,
+        message: "driver plugin path must be a non-empty string",
+      });
+    }
+  }
 }
 
 function validateMetadata(config: ParadigmConfig, errors: ValidationError[]): void {

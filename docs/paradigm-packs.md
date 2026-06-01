@@ -77,6 +77,7 @@ bun run dev install ./demo-paradigm --dry-run
 - `paradigm.yaml` 必须能解析并通过 `validateParadigm`。
 - `maestro_version` 必须兼容当前 schema，当前支持 `"1"`。
 - 所有 agent driver 必须已在当前 Maestro driver registry 注册。
+- 如果声明了 `driver_plugins`，插件必须能加载并导出合法 driver 函数。
 
 ## Metadata
 
@@ -121,6 +122,30 @@ Maestro 会给命令注入这些环境变量：
 
 命令的 `cwd` 是 phase worktree。stdout 会进入 Maestro events 和 report；phase 成败仍由常规 `output_file` frontmatter 决定。
 
+## Driver 插件
+
+当 `generic-cli` 不够表达某个本地 agent 协议时，pack 可以声明 driver 插件：
+
+```yaml
+driver_plugins:
+  local-reviewer: drivers/local-reviewer.js
+
+agents:
+  Reviewer:
+    driver: local-reviewer
+```
+
+插件路径相对 `paradigm.yaml` 所在目录解析。模块需要导出 `default`、`runAgent` 或 `runDriver` 函数：
+
+```javascript
+export async function* runAgent(prompt, workdir, options = {}) {
+  yield { type: "output", text: "running local reviewer" };
+  yield { type: "complete", result: "done" };
+}
+```
+
+driver 函数签名与内置 `AgentDriverFn` 相同。插件运行在本地进程内，不提供远程信任或沙箱；安装第三方 pack 前应先审查源码。
+
 ## 最小 live 命令
 
 本地测试时，可以把 scaffold 命令替换为：
@@ -140,4 +165,4 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test"
 
 ## 后续 M3.x
 
-签名 registry metadata、远程 registry 索引和外部 driver 插件加载，会在本地/Git pack 安装稳定后继续推进。
+签名 registry metadata、远程 registry 索引和更严格的插件 trust policy，会在本地/Git pack 安装稳定后继续推进。

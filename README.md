@@ -18,6 +18,7 @@ bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
 - dry-run：在不启动智能体的情况下校验范式和状态机拓扑。
 - replay：从 `.maestro/events-*.jsonl` 回放历史运行。
 - 审计产物：运行时写入 JSONL 事件日志，并生成 `.maestro/reports/run-*.md` 报告。
+- 报告索引：报告包含 phase summary、artifact index、decision summary、usage/cost 和失败详情。
 - 用量字段：driver 可在完成事件中提供 token、cost、model 信息，报告会自动汇总。
 - fork/join：解析器和状态机支持 `type: fork` 并行阶段；运行器层仍处于实验状态，复杂并行交接需要继续打磨。
 
@@ -145,6 +146,7 @@ phases:
 | --- | --- | --- |
 | `maestro_version` | 顶层 | Maestro 范式 schema 兼容版本，当前为 `"1"` |
 | `version`、`author`、`tags`、`license`、`homepage` | 顶层 | 本地 pack metadata，不影响执行 |
+| `driver_plugins` | 顶层 | 本地 driver 插件映射，值为相对范式文件的模块路径 |
 | `driver` | `agents.*` | 选择执行后端：`claude-code`、`codex`、`gemini`、`generic-cli` |
 | `command` | `agents.*` | `generic-cli` 使用的命令数组 |
 | `system_prompt` | `agents.*` | 给该 agent 的系统提示词 |
@@ -172,6 +174,21 @@ All checks passed.
 ```
 
 `status` 会被转成小写并去除首尾空白后匹配 `next_if`。
+
+### Driver 插件
+
+本地 pack 可以声明 driver 插件：
+
+```yaml
+driver_plugins:
+  local-reviewer: drivers/local-reviewer.js
+
+agents:
+  Reviewer:
+    driver: local-reviewer
+```
+
+插件模块需要导出 `default`、`runAgent` 或 `runDriver` 函数，函数签名与内置 `AgentDriverFn` 一致。`maestro run` 和 `maestro install` 会先加载插件，再检查 driver 兼容性。
 
 ## 执行数据流
 

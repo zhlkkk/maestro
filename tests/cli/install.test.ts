@@ -49,6 +49,39 @@ phases:
   return packDir;
 }
 
+function createPluginPack(root: string): string {
+  const packDir = join(root, "plugin-pack");
+  mkdirSync(join(packDir, "drivers"), { recursive: true });
+  writeFileSync(
+    join(packDir, "paradigm.yaml"),
+    `name: "Plugin Pack"
+maestro_version: "1"
+driver_plugins:
+  local-plugin: drivers/local-plugin.js
+agents:
+  Worker:
+    driver: local-plugin
+phases:
+  Work:
+    agent: Worker
+    output_file: RESULT.md
+    next: Done
+  Done:
+    type: final
+`,
+    "utf-8"
+  );
+  writeFileSync(
+    join(packDir, "drivers", "local-plugin.js"),
+    `export async function* runAgent() {
+  yield { type: "complete", result: "done" };
+}
+`,
+    "utf-8"
+  );
+  return packDir;
+}
+
 function git(args: string[], cwd: string): void {
   const proc = Bun.spawnSync(["git", ...args], {
     cwd,
@@ -168,6 +201,21 @@ describe("installCommand", () => {
       } else {
         writeFileSync(indexPath, previousIndex, "utf-8");
       }
+    }
+  });
+
+  test("loads declared driver plugins during compatibility check", async () => {
+    const root = tempRoot();
+    const packDir = createPluginPack(root);
+    const registryDir = join(root, "registry");
+
+    try {
+      const code = await installCommand(packDir, { dir: registryDir });
+
+      expect(code).toBe(0);
+      expect(existsSync(join(registryDir, "plugin-pack", "drivers", "local-plugin.js"))).toBe(true);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
     }
   });
 });

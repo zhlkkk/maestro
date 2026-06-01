@@ -76,6 +76,9 @@ agents:
     driver: generic-cli
     command: ["/bin/sh", "-c", "my-agent --prompt-file \"$MAESTRO_PROMPT_FILE\""]
 
+driver_plugins:
+  local-reviewer: drivers/local-reviewer.js
+
 phases:
   PhaseName:
     agent: AgentName
@@ -111,6 +114,7 @@ phases:
 - `maestro_version` 表示 Maestro 范式 schema 兼容版本，当前支持 `"1"`。
 - `version` 表示范式包自身版本，不参与状态机执行。
 - `author`、`tags`、`license`、`homepage` 是本地 pack 和未来 registry 使用的描述性字段。
+- `driver_plugins` 是本地 driver 插件映射，key 是 driver 名称，value 是相对范式文件的模块路径。
 - metadata 在 M3.1 中是非行为字段；parser 会保留，validator 只做基础形状检查。
 
 ### prompt 规则
@@ -316,6 +320,18 @@ Claude driver 使用 SDK；Codex、Gemini 和 Generic CLI driver 使用共享 su
 | `MAESTRO_OUTPUT_FILE` | 当前 phase 的 `output_file` |
 | `MAESTRO_MODEL` | 解析后的 phase / agent model，未配置时为空 |
 
+### Driver 插件
+
+范式可以通过 `driver_plugins` 声明本地插件 driver。Maestro 会在 `run` 和 `install` 阶段加载这些模块，然后执行 driver registry 兼容性检查。
+
+插件模块可以导出：
+
+- `default`
+- `runAgent`
+- `runDriver`
+
+导出值必须是 `AgentDriverFn` 兼容函数。插件路径相对 `paradigm.yaml` 解析，安装 Git source 时，插件文件会随 pack 一起复制到 `.maestro/paradigms/<name>`。
+
 ## 事件与报告
 
 事件类型定义在 `src/types.ts`：
@@ -343,11 +359,15 @@ Claude driver 使用 SDK；Codex、Gemini 和 Generic CLI driver 使用共享 su
 ```
 
 报告包含 phase summary、重试次数、agent status、错误详情，以及可选的模型、token、cost 汇总。
+M3 起报告还包含：
+
+- Artifact Index：列出每个 phase 产出的 `output_file`。
+- Decision Summary：列出每个 phase 的最终 `status`、重试次数和对应证据。
 
 ## 已知限制
 
 - 默认 `run` 输出尚未接入 Ink dashboard；dashboard 组件已有测试覆盖，但当前 CLI 使用 console 输出。
 - fork/join 已有 sibling abort 和 join 前冲突保护，复杂并行恢复仍未生产化。
-- `generic-cli` 只提供本地命令合同，不加载外部 driver 插件，也不做 registry 信任校验。
-- `maestro install` 支持本地目录和 Git URL，但还没有远程 registry 搜索、签名校验或 trust policy。
+- 本地 driver 插件已可加载，但还没有签名校验、权限沙箱或 trust policy。
+- `maestro install` 支持本地目录和 Git URL，但还没有远程 registry 搜索或签名校验。
 - fork/join 状态机已实现，真实并行 handoff 和失败取消语义仍需继续加强。

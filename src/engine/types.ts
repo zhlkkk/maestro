@@ -35,6 +35,7 @@ export interface ParadigmConfig {
   tags?: string[];
   license?: string;
   homepage?: string;
+  driver_plugins?: Record<string, string>;
   entry_agent?: string;
   agents: Record<string, AgentConfig>;
   phases: Record<string, PhaseConfig>;

@@ -23,6 +23,8 @@ author: "Maestro Team"
 tags: [team, review]
 license: "MIT"
 homepage: "https://example.com/maestro-pack"
+driver_plugins:
+  local-agent: drivers/local-agent.js
 agents:
   Facilitator:
     description: "Project lead"
@@ -83,6 +85,7 @@ describe("parseParadigm", () => {
     expect(config.tags).toEqual(["team", "review"]);
     expect(config.license).toBe("MIT");
     expect(config.homepage).toBe("https://example.com/maestro-pack");
+    expect(config.driver_plugins?.["local-agent"]).toContain("drivers/local-agent.js");
     expect(Object.keys(config.agents)).toHaveLength(3);
     expect(Object.keys(config.phases)).toHaveLength(4);
     expect(config.agents.Facilitator?.system_prompt).toBe("You are a facilitator");

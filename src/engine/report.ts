@@ -14,6 +14,7 @@ export interface PhaseReport {
   tokensIn?: number;
   tokensOut?: number;
   modelUsed?: string;
+  outputFile?: string;
 }
 
 export interface PipelineReport {
@@ -64,9 +65,9 @@ function buildReport(events: MaestroEvent[]): PipelineReport {
   const phaseNames = [...new Set(phaseStarts.map((e) => e.phase!))];
 
   for (const name of phaseNames) {
-    const complete = phaseCompletes.find((e) => e.phase === name);
-    const fail = phaseFails.find((e) => e.phase === name);
-    const timeout = phaseTimeouts.find((e) => e.phase === name);
+    const complete = findLastEvent(phaseCompletes, name);
+    const fail = findLastEvent(phaseFails, name);
+    const timeout = findLastEvent(phaseTimeouts, name);
     const retryCount = phaseRetries.filter((e) => e.phase === name).length;
 
     let status: PhaseReport["status"] = "skipped";
@@ -90,8 +91,9 @@ function buildReport(events: MaestroEvent[]): PipelineReport {
     const tokensIn = complete?.data.tokens_in as number | undefined;
     const tokensOut = complete?.data.tokens_out as number | undefined;
     const modelUsed = complete?.data.model_used as string | undefined;
+    const outputFile = (complete?.data.output_file ?? fail?.data.output_file) as string | undefined;
 
-    phases.push({ name, status, durationMs, retries: retryCount, agentStatus, error, costUsd, tokensIn, tokensOut, modelUsed });
+    phases.push({ name, status, durationMs, retries: retryCount, agentStatus, error, costUsd, tokensIn, tokensOut, modelUsed, outputFile });
   }
 
   const startTime = pipelineStart?.timestamp ?? "";
@@ -110,6 +112,14 @@ function buildReport(events: MaestroEvent[]): PipelineReport {
     totalDurationMs,
     phases,
   };
+}
+
+function findLastEvent(events: MaestroEvent[], phaseName: string): MaestroEvent | undefined {
+  for (let i = events.length - 1; i >= 0; i--) {
+    const event = events[i];
+    if (event?.phase === phaseName) return event;
+  }
+  return undefined;
 }
 
 function formatReportMarkdown(report: PipelineReport): string {
@@ -139,6 +149,39 @@ function formatReportMarkdown(report: PipelineReport): string {
     lines.push(
       `| ${icon} ${phase.name} | ${phase.status} | ${duration} | ${phase.retries} | ${phase.agentStatus ?? "-"} |`
     );
+  }
+
+  const artifactPhases = report.phases.filter((phase) => phase.outputFile);
+  if (artifactPhases.length > 0) {
+    lines.push("", "## Artifact Index", "");
+    lines.push("| Phase | Artifact | Status |");
+    lines.push("|-------|----------|--------|");
+
+    for (const phase of artifactPhases) {
+      lines.push(
+        `| ${phase.name} | \`${phase.outputFile}\` | ${phase.agentStatus ?? phase.status} |`
+      );
+    }
+  }
+
+  if (report.phases.length > 0) {
+    lines.push("", "## Decision Summary", "");
+    lines.push("| Phase | Decision | Evidence |");
+    lines.push("|-------|----------|----------|");
+
+    for (const phase of report.phases) {
+      const decision = phase.agentStatus
+        ? `status=${phase.agentStatus}`
+        : phase.status;
+      const retryNote = phase.retries > 0 ? `; retries=${phase.retries}` : "";
+      const evidence = phase.outputFile
+        ? `artifact: \`${phase.outputFile}\`${retryNote}`
+        : phase.error
+          ? `error: ${phase.error}${retryNote}`
+          : `event: ${phase.status}${retryNote}`;
+
+      lines.push(`| ${phase.name} | ${decision} | ${evidence} |`);
+    }
   }
 
   // Add cost summary if any phase has usage data

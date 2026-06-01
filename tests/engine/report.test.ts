@@ -29,7 +29,7 @@ describe("generateReport", () => {
     const eventsPath = logEvents("success-run", [
       { timestamp: "2026-04-03T12:00:00Z", type: "PIPELINE_START", data: { paradigm: "TDD", task: "Add auth" } },
       { timestamp: "2026-04-03T12:00:01Z", type: "PHASE_START", phase: "WriteTests", data: { agent: "A" } },
-      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_COMPLETE", phase: "WriteTests", data: { status: "complete", duration_ms: 29000 } },
+      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_COMPLETE", phase: "WriteTests", data: { status: "complete", duration_ms: 29000, output_file: "TESTS.md" } },
       { timestamp: "2026-04-03T12:00:31Z", type: "PHASE_START", phase: "Implement", data: { agent: "B" } },
       { timestamp: "2026-04-03T12:01:00Z", type: "PHASE_COMPLETE", phase: "Implement", data: { status: "complete", duration_ms: 29000 } },
       { timestamp: "2026-04-03T12:01:01Z", type: "PIPELINE_COMPLETE", data: { final_phase: "Done" } },
@@ -45,13 +45,17 @@ describe("generateReport", () => {
     expect(content).toContain("✔");
     expect(content).toContain("WriteTests");
     expect(content).toContain("Implement");
+    expect(content).toContain("## Artifact Index");
+    expect(content).toContain("| WriteTests | `TESTS.md` | complete |");
+    expect(content).toContain("## Decision Summary");
+    expect(content).toContain("| WriteTests | status=complete | artifact: `TESTS.md` |");
   });
 
   test("generates report for failed pipeline with details", () => {
     const eventsPath = logEvents("fail-run", [
       { timestamp: "2026-04-03T12:00:00Z", type: "PIPELINE_START", data: { paradigm: "TDD", task: "Add auth" } },
       { timestamp: "2026-04-03T12:00:01Z", type: "PHASE_START", phase: "Review", data: { agent: "QA" } },
-      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_FAILED", phase: "Review", data: { error: "Missing output file", duration_ms: 29000 } },
+      { timestamp: "2026-04-03T12:00:30Z", type: "PHASE_FAILED", phase: "Review", data: { error: "Missing output file", duration_ms: 29000, output_file: "REVIEW.md" } },
       { timestamp: "2026-04-03T12:00:31Z", type: "PIPELINE_FAILED", data: { error: "Pipeline ended in FAILED state" } },
     ]);
 
@@ -62,6 +66,7 @@ describe("generateReport", () => {
     expect(content).toContain("Failed");
     expect(content).toContain("Failure Details");
     expect(content).toContain("Missing output file");
+    expect(content).toContain("| Review | failed | artifact: `REVIEW.md` |");
   });
 
   test("includes cost summary when usage data is present", () => {
@@ -120,7 +125,7 @@ describe("generateReport", () => {
       { timestamp: "2026-04-03T12:00:10Z", type: "PHASE_COMPLETE", phase: "Review", data: { status: "rejected", duration_ms: 9000 } },
       { timestamp: "2026-04-03T12:00:11Z", type: "PHASE_RETRY", phase: "Review", data: {} },
       { timestamp: "2026-04-03T12:00:12Z", type: "PHASE_START", phase: "Review", data: {} },
-      { timestamp: "2026-04-03T12:00:20Z", type: "PHASE_COMPLETE", phase: "Review", data: { status: "approved", duration_ms: 8000 } },
+      { timestamp: "2026-04-03T12:00:20Z", type: "PHASE_COMPLETE", phase: "Review", data: { status: "approved", duration_ms: 8000, output_file: "REVIEW.md" } },
       { timestamp: "2026-04-03T12:00:21Z", type: "PIPELINE_COMPLETE", data: {} },
     ]);
 
@@ -129,5 +134,6 @@ describe("generateReport", () => {
 
     // Should show 1 retry
     expect(content).toContain("| 1 |");
+    expect(content).toContain("| Review | status=approved | artifact: `REVIEW.md`; retries=1 |");
   });
 });

@@ -1,9 +1,13 @@
 import { describe, expect, test } from "bun:test";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   registerDriver,
   getDriver,
   listDrivers,
   validateDrivers,
+  loadDriverPlugin,
 } from "../../src/driver/registry.js";
 import type { AgentDriverFn } from "../../src/driver/types.js";
 
@@ -74,5 +78,37 @@ describe("Driver Registry", () => {
 
   test("validateDrivers passes for empty array", () => {
     expect(() => validateDrivers([])).not.toThrow();
+  });
+
+  test("loadDriverPlugin registers a local module export", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "maestro-driver-plugin-test-"));
+    const pluginPath = join(dir, "plugin.js");
+
+    try {
+      writeFileSync(
+        pluginPath,
+        `export async function* runAgent() {
+  yield { type: "output", text: "plugin" };
+  yield { type: "complete", result: "done" };
+}
+`,
+        "utf-8"
+      );
+
+      await loadDriverPlugin("local-plugin-test", pluginPath);
+
+      const driver = getDriver("local-plugin-test");
+      const events = [];
+      for await (const event of driver("prompt", "/tmp")) {
+        events.push(event);
+      }
+
+      expect(events).toEqual([
+        { type: "output", text: "plugin" },
+        { type: "complete", result: "done" },
+      ]);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

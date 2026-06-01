@@ -298,6 +298,42 @@ phases:
 `);
   });
 
+  test("driver plugin declarations pass when valid", () => {
+    expectNoErrors(`
+name: "Plugin"
+driver_plugins:
+  local-agent: ./drivers/local-agent.js
+agents:
+  A:
+    driver: local-agent
+phases:
+  Work:
+    agent: A
+    output_file: out.md
+    next: Done
+  Done:
+    type: final
+`);
+  });
+
+  test("invalid driver plugin declaration reports validation error", () => {
+    const errors = validate(`
+name: "Plugin"
+driver_plugins: []
+agents:
+  A:
+    driver: test
+phases:
+  Done:
+    type: final
+`);
+
+    expect(errors).toContainEqual({
+      path: "driver_plugins",
+      message: "driver_plugins must be an object mapping driver names to plugin files",
+    });
+  });
+
   test("handoff_routing references nonexistent agent", () => {
     expectError(
       `
