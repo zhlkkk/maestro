@@ -9,6 +9,8 @@ deepened: 2026-04-04
 
 # feat: Maestro M2 — Multi-Driver, Parallel Execution & Competitive Release
 
+> 实现状态：当前代码库已部分实现 M2，仍处于活跃阶段。多 driver、model routing、async worktree、retry handoff、usage 字段、replay、report、fork/join 状态机支持已经存在。generic driver、npm/CI 发布、默认 Ink dashboard 接入、复杂并行 handoff 的生产级稳定性仍待完成。当前进度请以 `docs/roadmap.md` 为准。
+
 ## Overview
 
 Evolve Maestro from an internal-use M1 engine (Claude Code only, serial execution) to a public-ready M2 release with multi-driver support, parallel execution, smart model routing, incremental handoff, usage tracking, and brand positioning as the "Paradigm-as-Code" category leader. This plan is driven by competitive pressure from Hermes Agent (24k+ stars, 200+ model support) and the strategic decision to deepen Maestro's R&D orchestration niche rather than pursue general-purpose agent capabilities.

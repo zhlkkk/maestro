@@ -1,39 +1,37 @@
 # Maestro
 
-**Paradigm-as-Code: Encode R&D methodologies as executable state machines.**
+Maestro 是一个 Paradigm-as-Code 的多智能体研发编排 CLI。它把 TDD、缺陷排查、评审门禁、知识沉淀等研发方法写成 YAML 状态机，再用 Claude Code、Codex、Gemini 等命令行智能体按阶段执行。
 
-Maestro orchestrates multiple AI agents through structured workflows defined in YAML.
-Unlike general-purpose AI assistants, Maestro provides deterministic, auditable,
-reproducible development workflows with git-native isolation.
+它的核心目标不是替代交互式编程助手，而是让团队把稳定的研发流程变成可运行、可审计、可复用的流水线。
 
-```
-maestro run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
+```bash
+bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
 ```
 
-```
- WriteTests  ████████████████  done  (42s)
- Implement   ████████████░░░░  running...
- Review      ░░░░░░░░░░░░░░░░  pending
-```
+## 当前能力
 
-## Features
+- 多驱动执行：内置 `claude-code`、`codex`、`gemini` 三个 driver。
+- YAML 状态机：支持线性阶段、条件路由、重试上限、超时控制和终态。
+- Git 隔离：每个 phase 使用独立 git worktree，阶段之间通过 diff / 文件复制交接。
+- 输出约定：phase 必须产出带 YAML frontmatter 的 `output_file`，其中 `status` 驱动条件路由。
+- dry-run：在不启动智能体的情况下校验范式和状态机拓扑。
+- replay：从 `.maestro/events-*.jsonl` 回放历史运行。
+- 审计产物：运行时写入 JSONL 事件日志，并生成 `.maestro/reports/run-*.md` 报告。
+- 用量字段：driver 可在完成事件中提供 token、cost、model 信息，报告会自动汇总。
+- fork/join：解析器和状态机支持 `type: fork` 并行阶段；运行器层仍处于实验状态，复杂并行交接需要继续打磨。
 
-- **Multi-Driver** -- Claude Code, Codex, Gemini CLI: use the best model for each phase
-- **Parallel Execution** -- Fork-join phases run agents concurrently
-- **Git-Native** -- Worktree isolation per phase, diff-based handoff between agents
-- **Smart Routing** -- Per-phase model configuration for cost optimization
-- **Auditable** -- Full event log (JSONL) + markdown run reports with cost tracking
-- **Deterministic** -- YAML state machines with explicit transitions, not AI guesswork
+## 安装与运行
 
-## Quick Start
+### 环境要求
 
-### Prerequisites
+- Bun
+- Git，且支持 `git worktree`
+- 至少安装一个可用的 AI CLI：
+  - Claude Code，对应 driver: `claude-code`
+  - Codex CLI，对应 driver: `codex`
+  - Gemini CLI，对应 driver: `gemini`
 
-- [Bun](https://bun.sh) runtime
-- [Git](https://git-scm.com/) with worktree support
-- At least one supported AI CLI tool installed (see [Drivers](#drivers))
-
-### Install
+### 本地开发
 
 ```bash
 git clone https://github.com/user/maestro.git
@@ -41,28 +39,35 @@ cd maestro
 bun install
 ```
 
-### Run a paradigm
+### 运行内置范式
 
 ```bash
-# TDD workflow: write tests -> implement -> review
+# TDD：写测试 -> 实现 -> 评审
 bun run dev run paradigms/tdd-strict.yaml --task "Add input validation to signup form"
 
-# Dry-run mode: validate YAML and simulate state machine without launching agents
-bun run dev run paradigms/tdd-strict.yaml --task "..." --dry-run
+# 缺陷排查：复现 -> 诊断 -> 修复 -> 验证
+bun run dev run paradigms/bug-investigation.yaml --task "Fix checkout total mismatch"
+
+# 完整研发流：头脑风暴 -> 知识锁定 -> 深度计划 -> 执行 -> 评审 -> 知识沉淀
+bun run dev run paradigms/combined-workflow.yaml --task "Build import preview for CSV uploads"
 ```
 
-### What happens
+### 校验范式
 
-1. Maestro parses the YAML paradigm into an xstate state machine
-2. For each phase, it creates a git worktree for isolation
-3. The assigned agent runs with a templated prompt in that worktree
-4. On completion, file changes are handed off to the next phase via `git diff`
-5. Conditional routing (e.g., review approved/rejected) drives the state machine
-6. A full event log (`events.jsonl`) and markdown report are generated
+```bash
+bun run dev run paradigms/tdd-strict.yaml --task "smoke test" --dry-run
+```
 
-## Paradigm Format
+### 回放历史运行
 
-Paradigms are YAML files that define agents, phases, and transitions:
+```bash
+bun run dev replay .maestro/events-<run-id>.jsonl --speed max
+bun run dev replay .maestro/events-<run-id>.jsonl --speed 2x
+```
+
+## 范式格式
+
+范式文件由 `agents` 和 `phases` 组成。agent 负责声明执行角色和 driver，phase 负责声明状态机节点、提示词、产物文件和流转规则。
 
 ```yaml
 name: "TDD Strict"
@@ -74,9 +79,10 @@ agents:
     driver: claude-code
   Implementer:
     description: "Implements code to make tests pass"
-    driver: claude-code
+    driver: codex
+    model: gpt-5
   Reviewer:
-    description: "Reviews the implementation for quality and correctness"
+    description: "Reviews implementation quality"
     driver: claude-code
 
 phases:
@@ -85,11 +91,14 @@ phases:
     prompt_file: prompts/write-tests.md
     output_file: TESTS_WRITTEN.md
     next: Implement
+
   Implement:
     agent: Implementer
     prompt_file: prompts/implement.md
     output_file: IMPLEMENTATION_DONE.md
+    timeout_s: 1800
     next: Review
+
   Review:
     agent: Reviewer
     prompt_file: prompts/review.md
@@ -98,88 +107,105 @@ phases:
       approved: Done
       rejected: Implement
     max_retries: 3
+
   Done:
     type: final
 ```
 
-### Key concepts
+### 常用字段
 
-| Concept | Description |
-|---------|-------------|
-| `agents` | Named agent definitions with a `driver` and optional `system_prompt` |
-| `phases` | Steps in the workflow, each assigned to an agent |
-| `next` | Unconditional transition to the next phase |
-| `next_if` | Conditional routing based on the `status` field in the output file's YAML frontmatter |
-| `max_retries` | Limit retry loops (e.g., review rejection cycles) |
-| `timeout_s` | Per-phase timeout (default: 300s) |
-| `prompt_file` | Prompt template supporting `{{task}}` and `{{previous_output}}` interpolation |
-| `output_file` | File the agent writes; its frontmatter `status` drives conditional routing |
+| 字段 | 位置 | 作用 |
+| --- | --- | --- |
+| `driver` | `agents.*` | 选择执行后端：`claude-code`、`codex`、`gemini` |
+| `system_prompt` | `agents.*` | 给该 agent 的系统提示词 |
+| `tools` | `agents.*` | 传给 driver 的工具 allowlist |
+| `model` | `agents.*` 或 `phases.*` | 模型覆盖；phase 级优先于 agent 级 |
+| `prompt_file` | `phases.*` | prompt 模板路径，支持 `{{task}}` 和 `{{previous_output}}` |
+| `output_file` | `phases.*` | agent 必须写出的阶段产物 |
+| `next` | `phases.*` | 无条件跳转 |
+| `next_if` | `phases.*` | 根据 `output_file` frontmatter 的 `status` 条件跳转 |
+| `max_retries` | `phases.*` | 后退重试路径的最大次数 |
+| `timeout_s` | `phases.*` | phase 超时时间，默认 300 秒 |
+| `type: final` | `phases.*` | 终态 |
+| `type: fork` | `phases.*` | 实验性并行阶段 |
 
-## Built-in Templates
+条件路由依赖输出文件的 YAML frontmatter：
 
-| Template | Phases | Use Case |
-|----------|--------|----------|
-| `tdd-strict` | 3 | Test-driven development: write tests, implement, review |
-| `combined-workflow` | 6 | Full R&D cycle: brainstorm, lock knowledge, plan, execute, review, compound learnings |
-| `bug-investigation` | 4 | Systematic bug fixing: reproduce, diagnose, fix, verify |
+```markdown
+---
+status: approved
+---
 
-## Paradigm-as-Code vs General AI Agents
+## Review Summary
 
-Maestro is not a general-purpose AI assistant. It is a workflow orchestration engine for R&D teams that want deterministic, reproducible processes.
-
-| | Maestro | General AI Agents |
-|---|---------|-------------------|
-| **Approach** | Explicit YAML state machines | Agent-driven autonomous decisions |
-| **Reproducibility** | Same paradigm = same workflow every time | Non-deterministic by design |
-| **Auditability** | Full event log, run reports, cost tracking | Varies |
-| **Isolation** | Git worktree per phase | Typically shared workspace |
-| **Multi-agent** | Structured handoff with diff-based context | Varies |
-| **Best for** | Team SQA workflows, auditable R&D, methodology enforcement | Personal productivity, exploratory tasks |
-
-**When to use Maestro:** You have a development methodology you want to enforce consistently -- TDD, code review gates, knowledge compounding -- and you want it automated with full traceability.
-
-**When to use a general AI agent:** You want an interactive assistant for ad-hoc tasks, personal productivity, or multi-platform communications.
-
-For a detailed comparison with Hermes Agent, see [docs/comparison-hermes.md](docs/comparison-hermes.md).
-
-## Drivers
-
-Maestro supports multiple AI CLI backends. Each agent in a paradigm specifies which driver to use.
-
-| Driver | CLI Tool | Status |
-|--------|----------|--------|
-| `claude-code` | [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Implemented |
-| `codex` | [Codex CLI](https://github.com/openai/codex) | Implemented |
-| `gemini` | [Gemini CLI](https://github.com/google-gemini/gemini-cli) | Implemented |
-
-You can mix drivers within a single paradigm -- for example, use a cost-effective model for brainstorming and a more capable one for implementation:
-
-```yaml
-agents:
-  Planner:
-    driver: gemini
-  Engineer:
-    driver: claude-code
+All checks passed.
 ```
 
-## Project Structure
+`status` 会被转成小写并去除首尾空白后匹配 `next_if`。
 
+## 执行数据流
+
+```text
+CLI command
+  -> parse YAML
+  -> validate agents, phases, routing, cycles
+  -> dry-run simulation or live run
+  -> create xstate machine
+  -> create/reuse phase worktree
+  -> copy previous phase diff into current worktree
+  -> assemble prompt from template
+  -> run selected driver
+  -> stream AgentEvent into logger and console
+  -> read output_file
+  -> parse frontmatter status
+  -> route to next phase, retry, final, or failed
+  -> write report and cleanup worktrees
 ```
+
+更完整的架构、配置、数据流和实现说明见 [docs/architecture.md](docs/architecture.md)。
+
+## 项目结构
+
+```text
 maestro/
   src/
-    cli/          # Commander-based CLI
-    driver/       # Agent driver implementations + registry
-    engine/       # xstate state machine, pipeline orchestration
-    sandbox/      # Git worktree isolation + handoff
-    dashboard/    # Ink-based terminal UI
-    types.ts      # Shared type definitions
-  paradigms/      # Built-in paradigm templates
-  prompts/        # Prompt templates for built-in paradigms
+    cli/          # run / replay 命令
+    dashboard/    # Ink 终端 UI 组件，目前未接入默认 run 输出
+    driver/       # driver 接口、registry、Claude/Codex/Gemini 实现
+    engine/       # parser、validator、xstate machine、runner、logger、report
+    sandbox/      # git worktree、handoff、prompt 组装
+    index.ts      # CLI 入口
+    types.ts      # 跨模块事件类型
+  paradigms/      # 内置范式
+  prompts/        # 内置 prompt 模板
+  docs/           # 架构、路线图、PRD、计划和对比文档
+  tests/          # bun:test 单元测试与 spike 测试
 ```
 
-## Contributing
+## 开发命令
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for how to write paradigms, add drivers, and submit PRs.
+```bash
+bun test
+bun run typecheck
+bun run dry-run:all
+bun run build
+```
+
+`bun run build` 会编译出本地 `./maestro` 二进制。
+
+## 文档入口
+
+- [架构与实现原理](docs/architecture.md)
+- [路线图与当前进度](docs/roadmap.md)
+- [产品说明](docs/prd/maestro_v1.md)
+- [贡献指南](CONTRIBUTING.md)
+- [Maestro vs Hermes Agent](docs/comparison-hermes.md)
+
+## 适用场景
+
+Maestro 适合需要稳定流程和审计链路的研发任务：强制 TDD、自动化 code review、缺陷排查、架构计划、知识沉淀、团队级 SQA 门禁。
+
+如果你需要一个随时聊天、主动决策、多平台通信、长期记忆的个人助手，通用 agent 框架会更合适。Maestro 的定位是明确流程、明确阶段、明确交接。
 
 ## License
 
