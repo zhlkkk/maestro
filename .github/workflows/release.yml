@@ -38,8 +38,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Typecheck
+        run: bun run typecheck
+
       - name: Run tests
         run: bun test
+
+      - name: Dry-run built-in paradigms
+        run: bun run dry-run:all
 
       - name: Compile standalone binary
         env:
@@ -103,11 +109,14 @@ jobs:
       - name: Install dependencies
         run: bun install --frozen-lockfile
 
+      - name: Typecheck
+        run: bun run typecheck
+
+      - name: Run tests
+        run: bun test
+
       - name: Validate paradigm templates
-        run: |
-          bun run src/index.ts run paradigms/tdd-strict.yaml --task "validate" --dry-run
-          bun run src/index.ts run paradigms/combined-workflow.yaml --task "validate" --dry-run
-          bun run src/index.ts run paradigms/bug-investigation.yaml --task "validate" --dry-run
+        run: bun run dry-run:all
 
       - name: Publish to npm
         env:

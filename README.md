@@ -34,7 +34,7 @@ bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
 ### 本地开发
 
 ```bash
-git clone https://github.com/user/maestro.git
+git clone https://github.com/zhlkkk/maestro.git
 cd maestro
 bun install
 ```

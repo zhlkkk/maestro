@@ -1,14 +1,19 @@
 #!/usr/bin/env bun
+import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { runCommand } from "./cli/run.js";
 import { replayCommand, type PlaybackSpeed } from "./cli/replay.js";
+
+const packageJson = JSON.parse(
+  readFileSync(new URL("../package.json", import.meta.url), "utf-8")
+) as { version?: string };
 
 const program = new Command();
 
 program
   .name("maestro")
   .description("Multi-Agent R&D Orchestration Engine")
-  .version("0.1.0");
+  .version(packageJson.version ?? "0.0.0");
 
 program
   .command("run")

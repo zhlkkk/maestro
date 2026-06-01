@@ -38,7 +38,7 @@
 
 ### M2：多 driver、审计和竞争力增强
 
-状态：大部分已实现，仍有发布与稳定化工作。
+状态：大部分已实现，当前进入发布候选稳定化阶段。M2 的公开 beta 可以在 fork/join 明确标注 experimental 的前提下发布；生产级并行取消与冲突合并语义继续留在 M2.x/M3 打磨。
 
 已完成：
 
@@ -58,20 +58,19 @@
 
 仍需完成或加强：
 
-- 默认 CLI 接入 Ink dashboard。
-- fork/join 的真实运行器语义加强，包括父级上下文到多个 child 的一致 handoff、child 失败后的 sibling abort。
+- 默认 CLI 接入 Ink dashboard，或保留 console 输出并把 dashboard 定位为可复用组件。
+- fork/join 的真实运行器语义继续加强：父级上下文到多个 child 的一致 handoff、child 失败后的 sibling abort、join 前 handoff 冲突保护已开始收敛；复杂并行恢复仍需继续打磨。
 - Codex 原始 JSONL usage 提取。
 - Gemini CLI 参数和输出协议做真实版本校准。
 - generic CLI driver。
-- npm 发布配置、二进制发布、CI/CD。
 - 录制 demo 和发布说明。
 
 ## 已知技术债
 
-- Commander 版本号与 `package.json` 版本号不一致。
-- `PHASE_RETRY` 事件类型已定义但当前 runner 未显式发送。
+- Commander 版本号应始终来自 `package.json`，避免发布版本漂移。
+- `PHASE_RETRY` 事件应在真实重试执行时进入事件日志和报告。
 - logger 使用同步 append，足够简单可靠，但并行大 payload 下还没有写队列。
-- fork/join 状态机测试已经覆盖，但 runner 仍使用部分全局 last phase 状态。
+- fork/join 状态机测试已经覆盖；runner 已支持 fork child 共享 pre-fork handoff、join target 聚合 child handoff、sibling abort 和 join 前冲突保护，但复杂并行恢复仍未生产化。
 - dashboard 组件未成为默认运行 UI。
 - M1/M2 plan 文档保留原始计划格式，其中 checkbox 不代表当前真实完成状态。
 
@@ -81,24 +80,27 @@
 
 目标：把已有能力变成可公开试用的稳定 CLI。
 
-- 修正 CLI 版本号来源。
-- 完成 `bun test` 与 `bun run typecheck` 的绿色基线。
-- 为 fork/join runner 增加集成测试。
-- 明确 fork child 的 handoff 输入：从 fork 前 phase 同步到每个 child。
-- 实现 child 失败时的 sibling abort。
-- 为 Codex / Gemini driver 增加真实 CLI smoke test 文档。
+- 保持 `bun test`、`bun run typecheck`、`bun run dry-run:all` 绿色。
+- 为 fork/join runner 继续增加边界集成测试，覆盖更多 timeout、abort 和 conflict 组合。
+- 为 Codex / Gemini driver 校准真实 CLI 参数和 usage 提取。
 - 接入 Ink dashboard 或从文档里明确标注为组件能力。
 
 ### M2 发布化
 
 目标：让外部用户能安装、运行、复现 demo。
 
-- 补齐 `LICENSE` 或调整 `package.json` files。
 - 配置 npm publish。
-- 增加 GitHub Actions：test、typecheck、build。
-- 增加 release checklist。
 - 录制一个 TDD 或 bug-investigation 的完整 demo。
 - 增加 sample run report。
+
+### M2 完成口径
+
+M2 建议按“公开 beta”完成，而不是等待所有并行语义达到生产级：
+
+- 必须通过：`bun test`、`bun run typecheck`、`bun run dry-run:all`、`bun run build`。
+- 必须具备：MIT `LICENSE`、CI 基线、README 命令可复制、版本号来自 `package.json`、本地构建产物不进入 git。
+- 必须说明：fork/join 是 experimental；已支持 parser、validator、machine 和基础 runner handoff，但 sibling abort、冲突合并和复杂并行恢复仍是后续工作。
+- 必须验证：至少一个真实 driver live run 可以产出 events JSONL 和 Markdown report。
 
 ### M3：范式生态
 

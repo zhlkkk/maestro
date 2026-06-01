@@ -9,10 +9,9 @@ export interface HandoffResult {
 }
 
 /**
- * Copy changed files from source worktree to target worktree.
  * Uses `git status --porcelain` to detect all changes (tracked + untracked).
  */
-export async function copyHandoff(sourceWorktree: string, targetWorktree: string): Promise<HandoffResult> {
+export async function listHandoffChanges(sourceWorktree: string): Promise<HandoffResult> {
   const result: HandoffResult = { added: [], modified: [], deleted: [] };
 
   let statusOutput: string;
@@ -37,8 +36,6 @@ export async function copyHandoff(sourceWorktree: string, targetWorktree: string
     if (statusCode.trim().startsWith("R")) {
       const parts = filePath.split(" -> ");
       if (parts.length === 2) {
-        deleteFileInTarget(targetWorktree, parts[0]!.trim());
-        copyFileToTarget(sourceWorktree, targetWorktree, parts[1]!.trim());
         result.deleted.push(parts[0]!.trim());
         result.added.push(parts[1]!.trim());
       }
@@ -47,7 +44,6 @@ export async function copyHandoff(sourceWorktree: string, targetWorktree: string
 
     // Deleted files
     if (statusCode.includes("D")) {
-      deleteFileInTarget(targetWorktree, filePath);
       result.deleted.push(filePath);
       continue;
     }
@@ -58,8 +54,6 @@ export async function copyHandoff(sourceWorktree: string, targetWorktree: string
       statusCode.includes("M") ||
       statusCode.includes("?") // Untracked
     ) {
-      copyFileToTarget(sourceWorktree, targetWorktree, filePath);
-
       // Classify: untracked or newly added = "added", modified = "modified"
       if (statusCode.includes("?") || statusCode.includes("A")) {
         result.added.push(filePath);
@@ -67,6 +61,23 @@ export async function copyHandoff(sourceWorktree: string, targetWorktree: string
         result.modified.push(filePath);
       }
     }
+  }
+
+  return result;
+}
+
+/**
+ * Copy changed files from source worktree to target worktree.
+ */
+export async function copyHandoff(sourceWorktree: string, targetWorktree: string): Promise<HandoffResult> {
+  const result = await listHandoffChanges(sourceWorktree);
+
+  for (const filePath of result.deleted) {
+    deleteFileInTarget(targetWorktree, filePath);
+  }
+
+  for (const filePath of [...result.added, ...result.modified]) {
+    copyFileToTarget(sourceWorktree, targetWorktree, filePath);
   }
 
   return result;
