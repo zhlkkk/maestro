@@ -106,20 +106,20 @@ M2 建议按“公开 beta”完成，而不是等待所有并行语义达到生
 
 目标：让 Maestro 从单项目 CLI 变成可扩展的研发范式平台。
 
-状态：M3.1 已开始，第一片聚焦本地 pack authoring。
+状态：已完成本地生态闭环。远程 registry hosting、签名 trust policy 和 Web UI 不属于本次 M3 完成口径，进入 post-M3 backlog。
 
-已完成或进行中：
+已完成：
 
 - `generic-cli` driver：通过 command array 运行本地命令，注入 `MAESTRO_PROMPT_FILE`、`MAESTRO_WORKDIR`、`MAESTRO_OUTPUT_FILE`、`MAESTRO_MODEL`。
 - 顶层 metadata：`version`、`author`、`tags`、`license`、`homepage`。
 - `maestro init paradigm <name>`：生成本地 pack 骨架，支持 `--dir`、`--dry-run`、`--force`。
 - `maestro install <source>`：安装本地目录或 Git URL pack，支持 `--dir`、`--dry-run`、`--force`。
-- 本地 registry index：`.maestro/paradigms/index.json`，并支持 `maestro run <installed-name>`。
+- 本地 registry index：`.maestro/paradigms/index.json`，并支持 `maestro list paradigms` 和 `maestro run <installed-name>`。
 - driver 插件加载：`driver_plugins` 可注册本地 JS/TS 模块导出的 `AgentDriverFn`。
 - report 增强：生成 Artifact Index 和 Decision Summary，重试 phase 以最终完成事件为准。
 - 本地 pack 文档：`docs/paradigm-packs.md`。
 
-后续：
+Post-M3 backlog：
 
 - 远程 registry 搜索和签名/trust policy。
 - 更强的 report，可继续补充 diff 摘要和产物内容预览。

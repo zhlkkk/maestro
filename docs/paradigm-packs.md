@@ -33,6 +33,7 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test" --dry-run
 
 ```bash
 bun run dev install ./demo-paradigm
+bun run dev list paradigms
 bun run dev run demo --task "smoke test" --dry-run
 ```
 
@@ -69,6 +70,12 @@ bun run dev install ./demo-paradigm --dry-run
     }
   ]
 }
+```
+
+查看已安装 pack：
+
+```bash
+bun run dev list paradigms
 ```
 
 安装兼容性检查包括：

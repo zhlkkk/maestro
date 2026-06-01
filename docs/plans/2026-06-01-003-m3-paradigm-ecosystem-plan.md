@@ -1,7 +1,7 @@
 ---
 id: 2026-06-01-003
 title: M3 Paradigm Ecosystem
-status: active
+status: completed
 created: 2026-06-01
 origin: docs/roadmap.md
 ---
@@ -158,3 +158,7 @@ Verification:
 - Add registry index format and compatibility checks.
 - Add driver plugin loading once generic CLI driver usage patterns stabilize.
 - Improve reports with artifact indexes and key decision summaries.
+
+## Completion Note
+
+Completed on 2026-06-02. The original first-slice scope is implemented and verified: local pack scaffold, metadata, generic CLI driver, install/list flows, local registry index, driver plugin loading, and report artifact/decision summaries. Remote registry hosting, signed package trust policy, and Web UI remain explicitly out of scope for this M3 completion and are tracked as future post-M3 work.

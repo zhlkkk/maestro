@@ -24,9 +24,10 @@ src/index.ts
 
 | 模块 | 文件 | 职责 |
 | --- | --- | --- |
-| CLI 入口 | `src/index.ts` | 注册 `init`、`install`、`run` 和 `replay` 命令 |
+| CLI 入口 | `src/index.ts` | 注册 `init`、`install`、`list`、`run` 和 `replay` 命令 |
 | init 命令 | `src/cli/init.ts` | 生成本地 paradigm pack scaffold |
 | install 命令 | `src/cli/install.ts` | 安装本地路径或 Git source 的 paradigm pack |
+| list 命令 | `src/cli/list.ts` | 列出已安装 paradigm pack |
 | pack registry | `src/cli/paradigm-registry.ts` | 维护 `.maestro/paradigms/index.json` 并按名称解析已安装范式 |
 | run 命令 | `src/cli/run.ts` | 输入校验、解析范式、dry-run、创建 logger、启动 pipeline、生成 report |
 | replay 命令 | `src/cli/replay.ts` | 读取 JSONL 事件并按速度回放 |

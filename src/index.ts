@@ -4,6 +4,7 @@ import { Command } from "commander";
 import { runCommand } from "./cli/run.js";
 import { initParadigmCommand } from "./cli/init.js";
 import { installCommand } from "./cli/install.js";
+import { listParadigmsCommand } from "./cli/list.js";
 import { replayCommand, type PlaybackSpeed } from "./cli/replay.js";
 
 const packageJson = JSON.parse(
@@ -30,6 +31,17 @@ program
     opts: { dir?: string; dryRun?: boolean; force?: boolean }
   ) => {
     const exitCode = await initParadigmCommand(name, opts);
+    process.exit(exitCode);
+  });
+
+program
+  .command("list")
+  .description("List Maestro resources")
+  .command("paradigms")
+  .description("List installed paradigm packs")
+  .option("--dir <dir>", "Registry directory for installed packs")
+  .action(async (opts: { dir?: string }) => {
+    const exitCode = await listParadigmsCommand(opts);
     process.exit(exitCode);
   });
 

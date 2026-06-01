@@ -75,6 +75,7 @@ bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test" --dry-run
 
 ```bash
 bun run dev install ./demo-paradigm
+bun run dev list paradigms
 bun run dev run demo --task "smoke test" --dry-run
 ```
 
@@ -84,7 +85,7 @@ bun run dev run demo --task "smoke test" --dry-run
 bun run dev install https://github.com/example/maestro-pack.git
 ```
 
-安装后的 pack 会写入 `.maestro/paradigms/index.json`，默认不会进入 git。
+安装后的 pack 会写入 `.maestro/paradigms/index.json`，默认不会进入 git。可以用 `maestro list paradigms` 查看当前已安装 pack。
 
 ### 回放历史运行
 
@@ -216,7 +217,7 @@ CLI command
 ```text
 maestro/
   src/
-    cli/          # init / install / run / replay 命令
+    cli/          # init / install / list / run / replay 命令
     dashboard/    # Ink 终端 UI 组件，目前未接入默认 run 输出
     driver/       # driver 接口、registry、Claude/Codex/Gemini 实现
     engine/       # parser、validator、xstate machine、runner、logger、report
