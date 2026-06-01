@@ -1,110 +1,144 @@
-好的，这是一个极其重要且激动人心的转身！
+# Maestro v1 产品说明
 
-我们将目光从“为你的个人项目打补丁”彻底拔高，重新审视并沉淀 **Maestro** —— 它不应该仅仅是一堆特定工具（Cursor/Claude）的缝合脚本，而应该被定义为一个**通用、开源、跨工具的多智能体研发编排引擎 (Multi-Agent R&D Orchestration Engine)**。
+## 产品定位
 
-以下是为 Maestro 开源项目准备的**架构蓝图与核心设计白皮书**，这将是未来项目 `README.md` 和架构文档的绝佳基础。
+Maestro 是一个 Paradigm-as-Code 的多智能体研发编排引擎。它把软件研发方法论写成 YAML 状态机，并通过 CLI agent driver 在隔离 worktree 中执行每个阶段。
 
----
+Maestro 的目标用户是希望把研发流程标准化、审计化、自动化的个人开发者和工程团队。它不追求让 AI 自己决定一切，而是让人类定义流程，让 AI 在明确边界内执行。
 
-# 🎼 Maestro: 下一代智能体研发编排引擎 (Multi-Agent R&D Orchestrator)
+## 核心问题
 
-## 🌟 愿景 (Vision)
-在 AI 编程时代，开发者面临的不再是“AI 写不出代码”的问题，而是**“AI 写的代码如何管理、审计、与协同”**的问题。
-Maestro 致力于成为 AI 研发时代的 **“CI/CD 管道”与“项目经理”**。它将不同的 AI 工具（如 GUI 编辑器、CLI Agent、云端模型）解耦并编排，把软件工程的最佳实践（如 TDD、敏捷、螺旋迭代）固化为机器可读的**研发范式 (Paradigm)**，实现真正可靠、可复利的全自动软件交付。
+AI 编程工具越来越强，但团队使用时常遇到几个问题：
 
----
+- 同一类任务每次都靠临场 prompt，流程不稳定。
+- AI 改动难以审计，阶段产物和决策链路容易丢失。
+- TDD、review、bug investigation 等工程纪律依赖人工提醒。
+- 多个 AI CLI 各有优势，但缺少统一编排方式。
+- 失败重试时上下文容易膨胀，反馈与 diff 不够结构化。
 
-## 🏗️ 核心架构思想 (Core Philosophy)
+Maestro 通过“显式状态机 + 文件产物 + git worktree + driver registry”解决这些问题。
 
-Maestro 的设计彻底抛弃了“大语言模型套壳”的传统 Agent 框架思路，转向了**“状态机驱动的工具链编排”**。
+## 用户价值
 
-### 1. 范式即代码 (Paradigm-as-Code, PaC)
-软件工程没有银弹。MVP 阶段需要“敏捷梭哈”，核心系统重构需要“TDD + 强力 Code Review”。
-Maestro 提出将研发流程抽象为 `.yaml` 格式的范式文件。一个范式包含：
-*   **状态机节点 (Phases)**：例如 `PLANNING` -> `CODING` -> `REVIEWING`。
-*   **流转规则 (Transitions)**：基于条件（如文件生成、人工审批、测试结果）进行状态流转或打回重做。
-*   **角色分配 (Roles)**：定义在特定阶段，由哪个角色负责执行。
+- 流程可复制：同一个 YAML 范式每次产生同样的阶段结构。
+- 交接可追踪：每个 phase 都必须写出文件产物。
+- 运行可审计：JSONL event log 和 Markdown report 记录执行过程。
+- 改动可隔离：每个 phase 在独立 worktree 中运行。
+- 工具可替换：Claude Code、Codex、Gemini 可按阶段混用。
+- 成本可观察：driver 可上报 token、cost、model 并进入报告。
 
-### 2. 身份与工具链解耦 (Decoupled Personas & Tools)
-Maestro 不绑定任何特定的 AI 工具或模型。它抽象出：
-*   **角色 (Persona)**：带有特定 System Prompt（如“严苛的架构师”或“无情的打字机”）。
-*   **驱动器 (Driver)**：执行任务的物理实体。可以是 `cursor-cli` (唤醒 GUI 让 Gemini/o3-mini 处理复杂上下文)、`claude-code-cli` (在终端高权限执行代码)、`aider`、甚至是未来的 `devin`。
+## v1 功能范围
 
-### 3. 文件系统即消息总线 (File-System as Message Bus)
-拒绝复杂的 RPC 或内存共享。Agent 之间的上下文交接（Handoff）、任务汇报，全部通过物理文件（如 Markdown 格式的 `WAITING_FOR_REVIEW.md`）进行。
-这不仅极大地降低了系统复杂度，而且**天然留存了项目演进的完整思维快照（Audit Trail）**，为知识复利（Compound Engineering）提供了完美的数据源。
+### CLI
 
----
+- `maestro run <paradigm> --task <task>`
+- `maestro run <paradigm> --task <task> --dry-run`
+- `maestro replay <events-file> --speed <1x|2x|10x|max>`
 
-## ⚙️ 系统核心模块 (System Architecture)
+### 范式配置
 
-如果要将 Maestro 实现为一个开源的 Node.js/Python CLI 工具（例如通过 `npm install -g maestro-cli` 运行），其内部需包含四大核心引擎：
+- 顶层 `name`、`description`、`maestro_version`。
+- `agents` 声明角色、driver、system prompt、tools、model。
+- `phases` 声明执行节点、prompt、output、路由和超时。
+- `handoff_routing` 限制 agent 之间的交接关系。
+- `next` 线性流转。
+- `next_if` 基于 output frontmatter status 条件流转。
+- `max_retries` 限制后退重试。
+- `type: final` 终态。
+- `type: fork` 实验性并行阶段。
 
-### 1. 范式解析器 (Paradigm Parser)
-负责加载和校验用户的 YAML 剧本。
-```yaml
-# 概念示例：Maestro 范式
-name: "TDD-Strict-Workflow"
-personas:
-  Architect:
-    driver: "gui-editor" # 泛指 Cursor/Windsurf 等
-    model: "Gemini 3.1 Pro"
-    prompt: "你是架构师，负责拆解任务和 Review..."
-  Worker:
-    driver: "cli-agent"  # 泛指 Claude Code/Aider 等
-    prompt: "你是码农，必须先跑通测试..."
-phases:
-  Plan:
-    role: Architect
-    next: Code
-  Code:
-    role: Worker
-    trigger: "file:REPORT.md"
-    next: Review
+### 执行引擎
+
+- YAML parse 和结构校验。
+- xstate v5 状态机翻译。
+- driver fail-fast 校验。
+- phase worktree 创建、复用和清理。
+- prompt 模板插值。
+- retry 场景的增量 diff summary。
+- output_file frontmatter 解析。
+- phase timeout 和 abort。
+
+### Driver
+
+- `claude-code`：使用 `@anthropic-ai/claude-agent-sdk`。
+- `codex`：使用 `codex exec --json` subprocess。
+- `gemini`：使用 `gemini --non-interactive` subprocess。
+- 统一 `AgentDriverFn` 和 `AgentEvent`。
+
+### 审计与报告
+
+- `.maestro/events-<run-id>.jsonl`
+- `.maestro/reports/run-<run-id>.md`
+- phase summary。
+- 失败详情。
+- 可选 usage / cost summary。
+- replay 历史运行。
+
+## 非目标
+
+- 不做通用个人助手。
+- 不做多平台聊天、邮件、社交媒体自动化。
+- 不内置长期记忆系统。
+- 不让 agent 自由决定整体工作流。
+- 不在 v1 内提供 Web UI。
+- 不承诺 fork/join 已适合复杂生产并行流。
+
+## 关键设计原则
+
+### 范式即代码
+
+研发方法论应该像 CI 配置一样进入仓库。YAML 范式是团队流程的声明式源码，可以 review、复用和演进。
+
+### 文件系统即消息总线
+
+phase 之间不通过隐式内存交换上下文，而是通过 prompt、output_file、git diff 和事件日志交接。这样每一次运行都留下可读产物。
+
+### Git 原生隔离
+
+worktree 是 Maestro 的沙箱边界。phase 之间的状态不会随意污染，handoff 只复制可检测的文件变化。
+
+### Driver 可替换
+
+Maestro 不绑定单一模型或单一 CLI。driver 只要实现 `AgentDriverFn`，就可以被范式引用。
+
+### 状态机优先
+
+流程推进由 `next`、`next_if`、`max_retries` 和 final state 决定，而不是由 agent 临场判断。agent 负责完成 phase，不负责改写流程。
+
+## 数据流
+
+```text
+用户输入 task
+  -> YAML paradigm
+  -> parser / validator
+  -> xstate machine
+  -> phase actor
+  -> worktree
+  -> prompt template
+  -> driver
+  -> agent writes output_file
+  -> frontmatter status
+  -> transition
+  -> event log
+  -> report
 ```
 
-### 2. 状态机控制器 (State Machine Controller)
-这是 Maestro 的“心脏”。
-*   维护 `.maestro/state.json` 指针。
-*   监听外部触发器（如文件系统的变化、Webhook、或开发者的手动 `Cmd+S` 确认）。
-*   一旦满足 `trigger` 条件，自动推进状态，或根据规则执行分支跳跃（如 `on_reject: return_to_code`）。
+## 当前进度
 
-### 3. 驱动适配层 (Driver Adapters)
-这是 Maestro 与物理世界交互的“手脚”。采用插件化设计：
-*   **GUI Adapter**：通过命令行拉起特定的编辑器，并自动聚焦到任务 Markdown 文件（Human-in-the-loop 的关键点）。
-*   **CLI Adapter**：使用 `spawn` 在受控的 CWD（工作目录）下，带参数（如提权参数）拉起后台 Agent 进程，并通过流接管 (Pipe) 或直接继承 (Inherit) 暴露内部运行日志。
-*   **API Adapter**：直接调用大模型 API 执行轻量级验证。
+已完成：
 
-### 4. 隔离沙箱与防呆机制 (Sandbox & Guardrails)
-*   强制的工作目录锚定（防 Monorepo 迷路）。
-*   超长 Prompt 的文件挂载传输（防 Shell 转义注入）。
-*   死循环熔断器（Max Retries 断路器）。
+- M1 核心引擎。
+- M2 多 driver 基础能力。
+- dry-run、replay、report。
+- 三个内置 paradigm。
+- 单元测试覆盖主要模块。
 
----
+进行中或待稳定：
 
-## 🚀 为什么世界需要 Maestro？(The Value Proposition)
+- fork/join 真实执行语义。
+- Ink dashboard 接入默认 run。
+- npm 发布和 CI。
+- Codex / Gemini usage 与参数协议校准。
+- generic CLI driver。
 
-目前的开源生态中，**LangChain / AutoGen / CrewAI** 等框架是为“构建应用程序（App）”设计的，它们活在内存里。
-而 **Maestro** 是为“软件研发流程（R&D Pipeline）”设计的，它活在文件系统和终端里。
-
-1. **跨工具协同的终极解药**：开发者终于可以组合世界上最好的脑（如 Cursor 中的 Gemini 3.1 Pro）和最好的手（如全自动运行的 CLI Agent），让它们无缝接力。
-2. **知识资产复利**：每一次跑通 Maestro 的范式，沉淀下来的不仅是代码，还有 Agent 留下的决策文档（PRD、坑点记录）。这让“代码库越用越聪明”成为可落地的现实。
-3. **团队级研发 SQA 标准化**：高级工程师可以将自己的研发经验写成 `.yaml` 范式。初级工程师只需运行 `maestro start`，其写出的代码就必然经过了预设的规划和自动化审查流程，极大降低了代码雪崩的风险。
-
----
-
-## 🎯 下一步开源落地计划 (Roadmap)
-
-如果我们要启动这个开源项目，建议按照以下阶段演进：
-
-*   **Phase 1 (MVP: 最小可行性编排器)**：
-    *   使用 TypeScript 构建核心 CLI（`maestro-core`）。
-    *   实现 YAML 解析、基于文件的 State Machine 流转。
-    *   实现两个基础 Driver：`generic-gui` (唤醒系统默认编辑器) 和 `generic-cli` (执行任意命令行 Agent)。
-*   **Phase 2 (Hooks & Ecosystem)**：
-    *   引入生命周期钩子（如 `pre_phase`, `post_phase`），允许在节点切换时自动运行脚本（如 `git diff`, `npm run lint`）。
-    *   提供官方的最佳实践范式模板库（如 `compound-engineering.yaml`, `gstack-agile.yaml`）。
-*   **Phase 3 (Observability)**：
-    *   提供本地的 Web UI 仪表盘，可视化展示当前 Agent 处于状态机的哪个节点、耗时多少、打回了多少次。
-
-**结语**：Maestro 绝不是另一个重新发明轮子的 Agent 框架。它是站在各种强大 AI 工具肩膀上的“指挥家”，致力于将零散的 AI 能力，编织成工业级的现代软件生产流水线。
+详细路线图见 `docs/roadmap.md`。
