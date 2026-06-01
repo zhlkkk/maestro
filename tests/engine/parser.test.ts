@@ -18,6 +18,11 @@ phases:
 const FULL_PARADIGM = `
 name: "Full Team"
 description: "A full test paradigm"
+version: "0.1.0"
+author: "Maestro Team"
+tags: [team, review]
+license: "MIT"
+homepage: "https://example.com/maestro-pack"
 agents:
   Facilitator:
     description: "Project lead"
@@ -28,6 +33,7 @@ agents:
     description: "Coder"
     driver: claude-code
     system_prompt_file: prompts/engineer.md
+    command: ["bun", "run", "agent"]
   Reviewer:
     description: "QA"
     driver: claude-code
@@ -72,11 +78,17 @@ describe("parseParadigm", () => {
     const config = parseParadigm(FULL_PARADIGM);
     expect(config.name).toBe("Full Team");
     expect(config.description).toBe("A full test paradigm");
+    expect(config.version).toBe("0.1.0");
+    expect(config.author).toBe("Maestro Team");
+    expect(config.tags).toEqual(["team", "review"]);
+    expect(config.license).toBe("MIT");
+    expect(config.homepage).toBe("https://example.com/maestro-pack");
     expect(Object.keys(config.agents)).toHaveLength(3);
     expect(Object.keys(config.phases)).toHaveLength(4);
     expect(config.agents.Facilitator?.system_prompt).toBe("You are a facilitator");
     expect(config.agents.Engineer?.system_prompt_file).toContain("prompts/engineer.md");
     expect(config.agents.Facilitator?.tools).toEqual(["handoff", "bash"]);
+    expect(config.agents.Engineer?.command).toEqual(["bun", "run", "agent"]);
     expect(config.phases.Review?.next_if).toEqual({ approved: "Done", rejected: "Code" });
     expect(config.phases.Review?.max_retries).toBe(3);
     expect(config.handoff_routing?.Facilitator).toEqual(["Engineer"]);

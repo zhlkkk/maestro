@@ -42,6 +42,11 @@ export function parseParadigm(
     name: expectString(obj, "name"),
     description: optionalString(obj, "description"),
     maestro_version: optionalString(obj, "maestro_version"),
+    version: optionalString(obj, "version"),
+    author: optionalString(obj, "author"),
+    tags: optionalStringArray(obj, "tags"),
+    license: optionalString(obj, "license"),
+    homepage: optionalString(obj, "homepage"),
     entry_agent: optionalString(obj, "entry_agent"),
     agents: parseAgents(obj.agents),
     phases: parsePhases(obj.phases, baseDir),
@@ -71,6 +76,7 @@ function parseAgents(raw: unknown): Record<string, import("./types.js").AgentCon
     agents[name] = {
       description: optionalString(a, "description"),
       driver: typeof a.driver === "string" ? a.driver : "claude-code",
+      command: optionalStringArray(a, "command"),
       system_prompt_file: optionalString(a, "system_prompt_file"),
       system_prompt: optionalString(a, "system_prompt"),
       tools: Array.isArray(a.tools) ? a.tools.map(String) : undefined,
@@ -144,6 +150,13 @@ function expectString(obj: Record<string, unknown>, key: string): string {
 function optionalString(obj: Record<string, unknown>, key: string): string | undefined {
   const val = obj[key];
   return typeof val === "string" ? val : undefined;
+}
+
+function optionalStringArray(obj: Record<string, unknown>, key: string): string[] | undefined {
+  const val = obj[key];
+  if (val === undefined) return undefined;
+  if (!Array.isArray(val)) return [];
+  return val.every((item) => typeof item === "string") ? val : [];
 }
 
 export class ParserError extends Error {

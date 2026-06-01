@@ -10,7 +10,8 @@
 - 范式解析：已支持 agents、phases、handoff_routing、`model`、`type: fork`。
 - 校验器：已覆盖 agent 引用、phase 输出、终态、路由目标、handoff 限制、死循环、fork child 限制。
 - 状态机：已支持线性、条件路由、重试、fork/join。
-- Driver：已完成 `claude-code`、`codex`、`gemini` 内置 driver 和 registry。
+- Driver：已完成 `claude-code`、`codex`、`gemini`、`generic-cli` 内置 driver 和 registry。
+- 范式生态：已开始 M3，本地 paradigm pack metadata 与 `maestro init paradigm` scaffold 已落地。
 - 沙箱：已完成 async git helper、worktree 创建/复用/清理、handoff 文件复制、retry diff summary。
 - 审计：已完成 JSONL event log、Markdown run report、replay。
 - 内置范式：已有 `tdd-strict`、`combined-workflow`、`bug-investigation`。
@@ -62,7 +63,6 @@
 - fork/join 的真实运行器语义继续加强：父级上下文到多个 child 的一致 handoff、child 失败后的 sibling abort、join 前 handoff 冲突保护已开始收敛；复杂并行恢复仍需继续打磨。
 - Codex 原始 JSONL usage 提取。
 - Gemini CLI 参数和输出协议做真实版本校准。
-- generic CLI driver。
 - 录制 demo 和发布说明。
 
 ## 已知技术债
@@ -106,8 +106,18 @@ M2 建议按“公开 beta”完成，而不是等待所有并行语义达到生
 
 目标：让 Maestro 从单项目 CLI 变成可扩展的研发范式平台。
 
+状态：M3.1 已开始，第一片聚焦本地 pack authoring。
+
+已完成或进行中：
+
+- `generic-cli` driver：通过 command array 运行本地命令，注入 `MAESTRO_PROMPT_FILE`、`MAESTRO_WORKDIR`、`MAESTRO_OUTPUT_FILE`、`MAESTRO_MODEL`。
+- 顶层 metadata：`version`、`author`、`tags`、`license`、`homepage`。
+- `maestro init paradigm <name>`：生成本地 pack 骨架，支持 `--dir`、`--dry-run`、`--force`。
+- 本地 pack 文档：`docs/paradigm-packs.md`。
+
+后续：
+
 - 范式 registry。
-- `maestro init paradigm` scaffold。
 - `maestro install <paradigm>`。
 - driver 插件机制。
 - 更强的 report，可包含 diff 摘要、产物索引和关键决策。

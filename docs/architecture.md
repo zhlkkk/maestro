@@ -24,7 +24,8 @@ src/index.ts
 
 | 模块 | 文件 | 职责 |
 | --- | --- | --- |
-| CLI 入口 | `src/index.ts` | 注册 `run` 和 `replay` 命令 |
+| CLI 入口 | `src/index.ts` | 注册 `init`、`run` 和 `replay` 命令 |
+| init 命令 | `src/cli/init.ts` | 生成本地 paradigm pack scaffold |
 | run 命令 | `src/cli/run.ts` | 输入校验、解析范式、dry-run、创建 logger、启动 pipeline、生成 report |
 | replay 命令 | `src/cli/replay.ts` | 读取 JSONL 事件并按速度回放 |
 | Parser | `src/engine/parser.ts` | 解析 YAML，解析 agents / phases / handoff_routing，解析相对 prompt 路径 |
@@ -39,6 +40,7 @@ src/index.ts
 | Claude driver | `src/driver/claude.ts` | 通过 `@anthropic-ai/claude-agent-sdk` 执行 Claude Code |
 | Codex driver | `src/driver/codex.ts` | 通过 `codex exec --json` 执行 Codex CLI |
 | Gemini driver | `src/driver/gemini.ts` | 通过 `gemini --non-interactive` 执行 Gemini CLI |
+| Generic CLI driver | `src/driver/generic-cli.ts` | 通过 command array 执行任意本地命令，并注入 Maestro 环境变量 |
 | Subprocess base | `src/driver/subprocess.ts` | 统一处理 subprocess stdout、stderr、exit code、abort |
 | Worktree | `src/sandbox/worktree.ts` | 创建、复用、清理 `.maestro/worktrees/<run-id>/<phase>` |
 | Handoff | `src/sandbox/handoff.ts` | 用 git status / diff 检测变化并复制到下个 worktree |
@@ -53,6 +55,11 @@ src/index.ts
 name: "Workflow Name"
 description: "Workflow description"
 maestro_version: "1"
+version: "0.1.0"
+author: "Team Name"
+tags: ["local", "review"]
+license: "MIT"
+homepage: "https://example.com"
 
 agents:
   AgentName:
@@ -62,6 +69,10 @@ agents:
       You are...
     tools: [Read, Edit, Bash]
     model: claude-sonnet-4-5
+
+  LocalTool:
+    driver: generic-cli
+    command: ["/bin/sh", "-c", "my-agent --prompt-file \"$MAESTRO_PROMPT_FILE\""]
 
 phases:
   PhaseName:
@@ -91,6 +102,14 @@ phases:
 - phase 级 `model` 优先于 agent 级 `model`。
 - driver 在 pipeline 启动前统一校验，未知 driver 会 fail fast。
 - `system_prompt` 和 `tools` 会传给 driver；具体是否支持取决于 driver 实现。
+- `generic-cli` agent 必须声明非空 `command` 数组。
+
+### 范式包 metadata
+
+- `maestro_version` 表示 Maestro 范式 schema 兼容版本，当前支持 `"1"`。
+- `version` 表示范式包自身版本，不参与状态机执行。
+- `author`、`tags`、`license`、`homepage` 是本地 pack 和未来 registry 使用的描述性字段。
+- metadata 在 M3.1 中是非行为字段；parser 会保留，validator 只做基础形状检查。
 
 ### prompt 规则
 
@@ -235,13 +254,26 @@ driver 可以产出三类事件：
 - `{ type: "complete", result, durationMs?, costUsd?, tokensIn?, tokensOut?, modelUsed? }`
 - `{ type: "error", error }`
 
-Claude driver 使用 SDK；Codex 和 Gemini driver 使用共享 subprocess base。subprocess base 负责：
+Claude driver 使用 SDK；Codex、Gemini 和 Generic CLI driver 使用共享 subprocess base。subprocess base 负责：
 
 - `Bun.spawn()`
 - stdout 按行流式输出
 - JSONL 或纯文本解析
 - 非零 exit code 转 error
 - `AbortController` 触发 SIGTERM，5 秒后 SIGKILL
+
+### Generic CLI driver
+
+`generic-cli` 用于把本地脚本、内部 CLI 或其他 agent 命令接入 Maestro。命令在 phase worktree 中执行，stdout 会变成 `AGENT_OUTPUT` 事件，phase 成败仍由 `output_file` 的 frontmatter 决定。
+
+运行时注入的环境变量：
+
+| 变量 | 作用 |
+| --- | --- |
+| `MAESTRO_PROMPT_FILE` | 临时 prompt 文件的绝对路径 |
+| `MAESTRO_WORKDIR` | 当前 phase worktree |
+| `MAESTRO_OUTPUT_FILE` | 当前 phase 的 `output_file` |
+| `MAESTRO_MODEL` | 解析后的 phase / agent model，未配置时为空 |
 
 ## 事件与报告
 
@@ -273,9 +305,8 @@ Claude driver 使用 SDK；Codex 和 Gemini driver 使用共享 subprocess base�
 
 ## 已知限制
 
-- `src/index.ts` 中 Commander 版本号仍是 `0.1.0`，而 `package.json` 是 `0.2.0`。
 - 默认 `run` 输出尚未接入 Ink dashboard；dashboard 组件已有测试覆盖，但当前 CLI 使用 console 输出。
-- `PHASE_RETRY` 类型已定义，报告也会统计，但 runner 当前没有显式 emit retry 事件。
-- Codex usage 提取尚未接入原始 JSONL usage 字段。
-- Gemini CLI 参数仍按当前假设实现，需随实际 CLI 版本校准。
+- fork/join 已有 sibling abort 和 join 前冲突保护，复杂并行恢复仍未生产化。
+- `generic-cli` 只提供本地命令合同，不加载外部 driver 插件，也不做 registry 信任校验。
+- 远程 paradigm install、签名和 registry 索引仍属于后续 M3.x。
 - fork/join 状态机已实现，真实并行 handoff 和失败取消语义仍需继续加强。

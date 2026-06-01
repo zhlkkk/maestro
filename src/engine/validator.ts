@@ -11,9 +11,11 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
   if (config.maestro_version && config.maestro_version !== "1") {
     errors.push({
       path: "maestro_version",
-      message: `Unsupported paradigm version "${config.maestro_version}". M1 only supports version "1".`,
+      message: `Unsupported paradigm schema version "${config.maestro_version}". Maestro supports version "1".`,
     });
   }
+
+  validateMetadata(config, errors);
 
   // Must have at least one agent and one phase
   if (Object.keys(config.agents).length === 0) {
@@ -25,6 +27,16 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
 
   const phaseNames = new Set(Object.keys(config.phases));
   const agentNames = new Set(Object.keys(config.agents));
+
+  // Validate agent-specific driver contracts
+  for (const [name, agent] of Object.entries(config.agents)) {
+    if (agent.driver === "generic-cli" && (!agent.command || agent.command.length === 0)) {
+      errors.push({
+        path: `agents.${name}.command`,
+        message: "generic-cli agents must define a non-empty command array",
+      });
+    }
+  }
 
   // Collect fork child phases (they are referenced but have special rules)
   const forkChildPhases = new Set<string>();
@@ -212,6 +224,39 @@ export function validateParadigm(config: ParadigmConfig): ValidationError[] {
   }
 
   return errors;
+}
+
+function validateMetadata(config: ParadigmConfig, errors: ValidationError[]): void {
+  const scalarFields = ["version", "author", "license", "homepage"] as const;
+
+  for (const field of scalarFields) {
+    const value = config[field];
+    if (value !== undefined && value.trim() === "") {
+      errors.push({
+        path: field,
+        message: `${field} must be a non-empty string when provided`,
+      });
+    }
+  }
+
+  if (config.tags !== undefined) {
+    if (config.tags.length === 0) {
+      errors.push({
+        path: "tags",
+        message: "tags must be a non-empty string array when provided",
+      });
+      return;
+    }
+
+    for (const [index, tag] of config.tags.entries()) {
+      if (tag.trim() === "") {
+        errors.push({
+          path: `tags.${index}`,
+          message: "tags entries must be non-empty strings",
+        });
+      }
+    }
+  }
 }
 
 /**

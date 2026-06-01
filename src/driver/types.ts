@@ -20,6 +20,8 @@ export interface RunAgentOptions {
   maxTurns?: number;
   maxBudgetUsd?: number;
   model?: string;
+  command?: string[];
+  outputFile?: string;
   abortController?: AbortController;
 }
 

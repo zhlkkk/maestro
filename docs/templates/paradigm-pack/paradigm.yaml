@@ -1,0 +1,24 @@
+name: "example-pack"
+description: "A local Maestro paradigm pack"
+maestro_version: "1"
+version: "0.1.0"
+author: "local"
+tags: ["local"]
+license: "UNLICENSED"
+
+agents:
+  Implementer:
+    driver: generic-cli
+    command:
+      - "/bin/sh"
+      - "-c"
+      - "echo 'Replace this generic-cli command with your agent command.' >&2; echo 'Prompt file: '$MAESTRO_PROMPT_FILE >&2; exit 1"
+
+phases:
+  Implement:
+    agent: Implementer
+    prompt_file: prompts/implement.md
+    output_file: RESULT.md
+    next: Done
+  Done:
+    type: final

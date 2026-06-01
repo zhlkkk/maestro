@@ -19,6 +19,11 @@ describe("Driver Registry", () => {
     expect(drivers).toContain("claude-code");
   });
 
+  test("generic-cli driver is registered by default", () => {
+    const drivers = listDrivers();
+    expect(drivers).toContain("generic-cli");
+  });
+
   test("getDriver returns claude-code driver", () => {
     const driver = getDriver("claude-code");
     expect(typeof driver).toBe("function");

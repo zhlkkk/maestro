@@ -197,8 +197,105 @@ phases:
   Done:
     type: final
 `,
-      /Unsupported paradigm version "2"/
+      /Unsupported paradigm schema version "2"/
     );
+  });
+
+  test("valid metadata fields pass", () => {
+    expectNoErrors(`
+name: "Metadata"
+maestro_version: "1"
+version: "0.1.0"
+author: "Maestro Team"
+tags: ["automation", "review"]
+license: "MIT"
+homepage: "https://example.com"
+agents:
+  A:
+    driver: test
+phases:
+  Done:
+    type: final
+`);
+  });
+
+  test("invalid metadata fields report validation errors", () => {
+    const errors = validate(`
+name: "Metadata"
+version: ""
+tags: []
+agents:
+  A:
+    driver: test
+phases:
+  Done:
+    type: final
+`);
+
+    expect(errors).toContainEqual({
+      path: "version",
+      message: "version must be a non-empty string when provided",
+    });
+    expect(errors).toContainEqual({
+      path: "tags",
+      message: "tags must be a non-empty string array when provided",
+    });
+  });
+
+  test("non-string metadata tags report validation errors", () => {
+    const errors = validate(`
+name: "Metadata"
+tags: ["ok", 42]
+agents:
+  A:
+    driver: test
+phases:
+  Done:
+    type: final
+`);
+
+    expect(errors).toContainEqual({
+      path: "tags",
+      message: "tags must be a non-empty string array when provided",
+    });
+  });
+
+  test("generic-cli agent requires command", () => {
+    const error = expectError(
+      `
+name: "Generic"
+agents:
+  A:
+    driver: generic-cli
+phases:
+  Work:
+    agent: A
+    output_file: out.md
+    next: Done
+  Done:
+    type: final
+`,
+      /generic-cli agents must define/
+    );
+
+    expect(error.path).toBe("agents.A.command");
+  });
+
+  test("generic-cli agent with command passes", () => {
+    expectNoErrors(`
+name: "Generic"
+agents:
+  A:
+    driver: generic-cli
+    command: ["/bin/sh", "-c", "true"]
+phases:
+  Work:
+    agent: A
+    output_file: out.md
+    next: Done
+  Done:
+    type: final
+`);
   });
 
   test("handoff_routing references nonexistent agent", () => {

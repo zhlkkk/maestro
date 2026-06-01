@@ -2,6 +2,7 @@
 export interface AgentConfig {
   description?: string;
   driver: string;
+  command?: string[];
   system_prompt_file?: string;
   system_prompt?: string;
   tools?: string[];
@@ -29,6 +30,11 @@ export interface ParadigmConfig {
   name: string;
   description?: string;
   maestro_version?: string;
+  version?: string;
+  author?: string;
+  tags?: string[];
+  license?: string;
+  homepage?: string;
   entry_agent?: string;
   agents: Record<string, AgentConfig>;
   phases: Record<string, PhaseConfig>;

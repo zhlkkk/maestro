@@ -253,6 +253,8 @@ export async function runPipeline(
             systemPrompt,
             allowedTools: agentConfig?.tools,
             model: resolvedModel,
+            command: agentConfig?.command,
+            outputFile: phase.output_file,
             abortController,
           })) {
             switch (event.type) {

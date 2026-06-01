@@ -2,6 +2,7 @@ import type { AgentDriverFn } from "./types.js";
 import { runAgent as claudeRunAgent } from "./claude.js";
 import { runCodexAgent } from "./codex.js";
 import { runGeminiAgent } from "./gemini.js";
+import { runGenericCliAgent } from "./generic-cli.js";
 
 type DriverFactory = () => AgentDriverFn;
 
@@ -54,3 +55,4 @@ export function validateDrivers(driverNames: string[]): void {
 registerDriver("claude-code", () => claudeRunAgent);
 registerDriver("codex", () => runCodexAgent);
 registerDriver("gemini", () => runGeminiAgent);
+registerDriver("generic-cli", () => runGenericCliAgent);

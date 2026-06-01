@@ -2,6 +2,7 @@
 import { readFileSync } from "node:fs";
 import { Command } from "commander";
 import { runCommand } from "./cli/run.js";
+import { initParadigmCommand } from "./cli/init.js";
 import { replayCommand, type PlaybackSpeed } from "./cli/replay.js";
 
 const packageJson = JSON.parse(
@@ -14,6 +15,22 @@ program
   .name("maestro")
   .description("Multi-Agent R&D Orchestration Engine")
   .version(packageJson.version ?? "0.0.0");
+
+program
+  .command("init")
+  .description("Initialize Maestro resources")
+  .command("paradigm <name>")
+  .description("Create a local paradigm pack")
+  .option("--dir <dir>", "Target directory for the pack")
+  .option("--dry-run", "Print files that would be created without writing")
+  .option("--force", "Overwrite scaffold files in a non-empty target directory")
+  .action(async (
+    name: string,
+    opts: { dir?: string; dryRun?: boolean; force?: boolean }
+  ) => {
+    const exitCode = await initParadigmCommand(name, opts);
+    process.exit(exitCode);
+  });
 
 program
   .command("run")

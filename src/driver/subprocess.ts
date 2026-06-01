@@ -23,6 +23,12 @@ export interface SubprocessDriverConfig {
     workdir: string,
     options: RunAgentOptions
   ) => string[];
+  /** Optional environment variables to merge into the child process environment. */
+  buildEnv?: (
+    prompt: string,
+    workdir: string,
+    options: RunAgentOptions
+  ) => Record<string, string | undefined>;
   /** Optional JSON-line parser for structured output (e.g. --json mode). */
   parseJsonLine?: (line: string) => AgentEvent | null;
   /** Optional extractor to derive usage metrics from collected events. */
@@ -48,12 +54,14 @@ export function createSubprocessDriver(
   ): AsyncGenerator<AgentEvent> {
     const abortController = options.abortController ?? new AbortController();
     const args = config.buildArgs(prompt, workdir, options);
+    const env = config.buildEnv?.(prompt, workdir, options);
 
     let proc: ReturnType<typeof Bun.spawn>;
 
     try {
       proc = Bun.spawn([config.command, ...args], {
         cwd: workdir,
+        ...(env && { env: { ...Bun.env, ...env } }),
         stdout: "pipe",
         stderr: "pipe",
       });

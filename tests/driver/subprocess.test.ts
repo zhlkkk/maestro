@@ -232,6 +232,22 @@ describe("createSubprocessDriver", () => {
     });
   });
 
+  test("buildEnv merges environment variables into subprocess", async () => {
+    const driver = createSubprocessDriver({
+      command: "/bin/sh",
+      buildArgs: () => ["-c", 'printf "%s" "$MAESTRO_TEST_ENV"'],
+      buildEnv: () => ({ MAESTRO_TEST_ENV: "available" }),
+    });
+
+    const events = await collectEvents(driver("ignored", "/tmp"));
+    const complete = events.find((event) => event.type === "complete");
+
+    expect(complete).toMatchObject({
+      type: "complete",
+      result: "available",
+    });
+  });
+
   test("buildArgs receives prompt, workdir, and options", async () => {
     let receivedPrompt = "";
     let receivedWorkdir = "";

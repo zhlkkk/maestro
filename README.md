@@ -10,7 +10,8 @@ bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
 
 ## 当前能力
 
-- 多驱动执行：内置 `claude-code`、`codex`、`gemini` 三个 driver。
+- 多驱动执行：内置 `claude-code`、`codex`、`gemini`，并支持 `generic-cli` 适配本地命令。
+- 本地范式包：`maestro init paradigm` 可生成自定义 paradigm pack 骨架。
 - YAML 状态机：支持线性阶段、条件路由、重试上限、超时控制和终态。
 - Git 隔离：每个 phase 使用独立 git worktree，阶段之间通过 diff / 文件复制交接。
 - 输出约定：phase 必须产出带 YAML frontmatter 的 `output_file`，其中 `status` 驱动条件路由。
@@ -30,6 +31,7 @@ bun run dev run paradigms/tdd-strict.yaml --task "Add rate limiting to the API"
   - Claude Code，对应 driver: `claude-code`
   - Codex CLI，对应 driver: `codex`
   - Gemini CLI，对应 driver: `gemini`
+  - 任意可从命令行读取 prompt 文件并写 output 文件的工具，对应 driver: `generic-cli`
 
 ### 本地开发
 
@@ -57,6 +59,16 @@ bun run dev run paradigms/combined-workflow.yaml --task "Build import preview fo
 ```bash
 bun run dev run paradigms/tdd-strict.yaml --task "smoke test" --dry-run
 ```
+
+### 创建本地范式包
+
+```bash
+bun run dev init paradigm demo --dry-run
+bun run dev init paradigm demo --dir ./demo-paradigm
+bun run dev run ./demo-paradigm/paradigm.yaml --task "smoke test" --dry-run
+```
+
+本地 pack 格式、metadata 和 `generic-cli` 环境变量见 [docs/paradigm-packs.md](docs/paradigm-packs.md)。
 
 ### 回放历史运行
 
@@ -116,7 +128,10 @@ phases:
 
 | 字段 | 位置 | 作用 |
 | --- | --- | --- |
-| `driver` | `agents.*` | 选择执行后端：`claude-code`、`codex`、`gemini` |
+| `maestro_version` | 顶层 | Maestro 范式 schema 兼容版本，当前为 `"1"` |
+| `version`、`author`、`tags`、`license`、`homepage` | 顶层 | 本地 pack metadata，不影响执行 |
+| `driver` | `agents.*` | 选择执行后端：`claude-code`、`codex`、`gemini`、`generic-cli` |
+| `command` | `agents.*` | `generic-cli` 使用的命令数组 |
 | `system_prompt` | `agents.*` | 给该 agent 的系统提示词 |
 | `tools` | `agents.*` | 传给 driver 的工具 allowlist |
 | `model` | `agents.*` 或 `phases.*` | 模型覆盖；phase 级优先于 agent 级 |
@@ -169,7 +184,7 @@ CLI command
 ```text
 maestro/
   src/
-    cli/          # run / replay 命令
+    cli/          # init / run / replay 命令
     dashboard/    # Ink 终端 UI 组件，目前未接入默认 run 输出
     driver/       # driver 接口、registry、Claude/Codex/Gemini 实现
     engine/       # parser、validator、xstate machine、runner、logger、report
@@ -196,6 +211,7 @@ bun run build
 ## 文档入口
 
 - [架构与实现原理](docs/architecture.md)
+- [本地范式包](docs/paradigm-packs.md)
 - [路线图与当前进度](docs/roadmap.md)
 - [产品说明](docs/prd/maestro_v1.md)
 - [贡献指南](CONTRIBUTING.md)
