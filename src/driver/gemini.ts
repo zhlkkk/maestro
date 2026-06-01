@@ -1,28 +1,27 @@
 import { createSubprocessDriver } from "./subprocess.js";
+import type { RunAgentOptions } from "./types.js";
 
 /**
- * Gemini CLI driver using `gemini` command in non-interactive mode.
+ * Gemini CLI driver using `gemini` command in headless prompt mode.
  * Built on the shared subprocess driver base.
  *
- * Note: Gemini CLI interface may evolve. This driver uses plain text mode
- * (no --json flag available as of 2026-04). Output is treated as raw text lines.
+ * Verified against Gemini CLI 0.42.0. Output is treated as raw text lines.
  */
 export const runGeminiAgent = createSubprocessDriver({
   command: "gemini",
-  buildArgs: (prompt, workdir, options) => {
-    const args = [
-      "--non-interactive",
-      "--cwd", workdir,
-    ];
-    if (options.model) {
-      args.push("--model", options.model);
-    }
-    // Prompt passed via stdin or as trailing argument
-    args.push(prompt);
-    return args;
-  },
-  // Gemini CLI does not support --json JSONL mode (as of 2026-04).
-  // Output lines are treated as plain text agent output.
+  buildArgs: buildGeminiArgs,
   parseJsonLine: undefined,
   extractUsage: undefined,
 });
+
+export function buildGeminiArgs(
+  prompt: string,
+  _workdir: string,
+  options: RunAgentOptions
+): string[] {
+  const args = ["--prompt", prompt];
+  if (options.model) {
+    args.push("--model", options.model);
+  }
+  return args;
+}

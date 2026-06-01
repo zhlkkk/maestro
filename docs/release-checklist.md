@@ -13,7 +13,7 @@ Use this checklist for M2 beta and later releases.
 - Run `bun run build`, then remove the local `maestro` binary if it was generated.
 - Confirm `git status --short` does not include local runtime artifacts under `.maestro/` or a root `maestro` binary.
 - Confirm README commands still match the current package name, repository URL, and built-in paradigms.
-- Run at least one live driver smoke test from `docs/driver-smoke.md` and confirm it writes `.maestro/events-*.jsonl` and `.maestro/reports/run-*.md`.
+- Run at least one live driver smoke test from `docs/driver-smoke.md`, record it with `docs/examples/driver-smoke-template.md`, and confirm it writes `.maestro/events-*.jsonl` and `.maestro/reports/run-*.md`.
 
 ## Tag and Release
 

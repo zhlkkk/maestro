@@ -30,7 +30,7 @@ export async function listHandoffChanges(sourceWorktree: string): Promise<Handof
     // git status --porcelain format: XY filename
     // X = index status, Y = worktree status
     const statusCode = line.slice(0, 2);
-    const filePath = line.slice(3);
+    const filePath = line[2] === " " ? line.slice(3) : line.slice(2).trimStart();
 
     // Handle renamed files (format: "R  old -> new")
     if (statusCode.trim().startsWith("R")) {
