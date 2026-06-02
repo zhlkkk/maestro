@@ -25,7 +25,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/user/maestro"
+    "url": "git+https://github.com/zhlkkk/maestro.git"
   },
   "license": "MIT",
   "scripts": {

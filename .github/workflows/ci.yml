@@ -4,18 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
 
 jobs:
   test:
-    name: Test & Typecheck
+    name: Test and build
     runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
 
       - name: Install dependencies
         run: bun install --frozen-lockfile
@@ -23,5 +23,11 @@ jobs:
       - name: Typecheck
         run: bun run typecheck
 
-      - name: Run tests
+      - name: Test
         run: bun test
+
+      - name: Dry-run built-in paradigms
+        run: bun run dry-run:all
+
+      - name: Build binary
+        run: bun run build

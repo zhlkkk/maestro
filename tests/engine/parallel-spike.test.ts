@@ -200,7 +200,7 @@ describe("Spike 3: Dynamic actor injection via machine.provide()", () => {
         context: { output: string };
       },
       actors: {
-        worker: fromPromise(async () => {
+        worker: fromPromise(async (): Promise<string> => {
           throw new Error("Worker not provided — use machine.provide()");
         }),
       },
@@ -256,10 +256,10 @@ describe("Spike 3: Dynamic actor injection via machine.provide()", () => {
         context: { results: Record<string, string> };
       },
       actors: {
-        taskA: fromPromise(async () => {
+        taskA: fromPromise(async (): Promise<string> => {
           throw new Error("taskA not provided");
         }),
-        taskB: fromPromise(async () => {
+        taskB: fromPromise(async (): Promise<string> => {
           throw new Error("taskB not provided");
         }),
       },

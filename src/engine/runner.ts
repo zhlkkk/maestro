@@ -56,9 +56,7 @@ export async function runPipeline(
   await cleanupStaleWorktrees(options.repoRoot);
 
   const worktreeManager = createWorktreeManager(options.repoRoot);
-  const phaseOrder = Object.keys(config.phases);
   let lastPhaseWorktree: string | undefined;
-  let lastPhaseOutputFile: string | undefined;
   let lastPhaseOutputContent: string | undefined;
 
   emit("PIPELINE_START", undefined, { paradigm: config.name, task: options.task });
@@ -69,6 +67,19 @@ export async function runPipeline(
     // Track worktree state per phase for multi-path handoff
     const phaseWorktrees = new Map<string, string>();
     const phaseOutputs = new Map<string, string>();
+    const retryCounts = new Map<string, number>();
+    const forkByChild = new Map<string, string>();
+    const forkInputs = new Map<string, { worktree?: string; output?: string }>();
+    const joinSourcesByPhase = new Map<string, string[]>();
+
+    for (const [phaseName, phase] of Object.entries(config.phases)) {
+      if (phase.type === "fork" && phase.fork_phases && phase.next) {
+        for (const childName of phase.fork_phases) {
+          forkByChild.set(childName, phaseName);
+        }
+        joinSourcesByPhase.set(phase.next, phase.fork_phases);
+      }
+    }
 
     // Build real actor implementations for each phase
     const actors: Record<string, any> = {};
@@ -82,18 +93,55 @@ export async function runPipeline(
         }
 
         const startTime = Date.now();
-        emit("PHASE_START", phaseName, { agent: phase.agent });
+        const isRetry = phaseWorktrees.has(phaseName);
+
+        if (isRetry) {
+          const retryCount = (retryCounts.get(phaseName) ?? 0) + 1;
+          retryCounts.set(phaseName, retryCount);
+          emit("PHASE_RETRY", phaseName, { attempt: retryCount + 1 });
+        }
+
+        emit("PHASE_START", phaseName, { agent: phase.agent, retry: isRetry });
 
         // 1. Prepare worktree
         const worktreePath = await worktreeManager.getWorktree(phaseName);
 
-        // 2. Copy changes from previous phase (if any)
-        if (lastPhaseWorktree) {
-          await copyHandoff(lastPhaseWorktree, worktreePath);
+        // 2. Resolve handoff sources. Fork children share the pre-fork snapshot,
+        // and the join target receives every child branch instead of just the last
+        // child that happened to finish.
+        const forkName = forkByChild.get(phaseName);
+        const joinSources = joinSourcesByPhase.get(phaseName);
+        const handoffSources: string[] = [];
+        let sourceOutput = lastPhaseOutputContent ?? "";
+
+        if (joinSources && joinSources.every((childName) => phaseWorktrees.has(childName))) {
+          for (const childName of joinSources) {
+            const childWorktree = phaseWorktrees.get(childName);
+            if (childWorktree) handoffSources.push(childWorktree);
+          }
+          sourceOutput = joinSources
+            .map((childName) => `## ${childName}\n${phaseOutputs.get(childName) ?? ""}`)
+            .join("\n\n");
+        } else if (forkName) {
+          if (!forkInputs.has(forkName)) {
+            forkInputs.set(forkName, {
+              worktree: lastPhaseWorktree,
+              output: lastPhaseOutputContent,
+            });
+          }
+
+          const forkInput = forkInputs.get(forkName);
+          if (forkInput?.worktree) handoffSources.push(forkInput.worktree);
+          sourceOutput = forkInput?.output ?? "";
+        } else if (lastPhaseWorktree) {
+          handoffSources.push(lastPhaseWorktree);
+        }
+
+        for (const sourceWorktree of handoffSources) {
+          await copyHandoff(sourceWorktree, worktreePath);
         }
 
         // 3. Assemble prompt — use incremental mode for retries
-        const isRetry = phaseWorktrees.has(phaseName);
         let previousOutput: string;
 
         if (isRetry && lastPhaseOutputContent) {
@@ -101,7 +149,7 @@ export async function runPipeline(
           const diffSummary = await generateDiffSummary(worktreePath);
           previousOutput = `## Review Feedback\n${lastPhaseOutputContent}\n\n## Changes Made\n${diffSummary}`;
         } else {
-          previousOutput = lastPhaseOutputContent ?? "";
+          previousOutput = sourceOutput;
         }
 
         let prompt: string;
@@ -186,7 +234,6 @@ export async function runPipeline(
 
         // Track for next phase handoff (both single-path and multi-path)
         lastPhaseWorktree = worktreePath;
-        lastPhaseOutputFile = phase.output_file;
         lastPhaseOutputContent = parsed.rawContent;
         phaseWorktrees.set(phaseName, worktreePath);
         phaseOutputs.set(phaseName, parsed.rawContent);
