@@ -59,11 +59,10 @@
 仍需完成或加强：
 
 - 默认 CLI 接入 Ink dashboard，或保留 console 输出并把 dashboard 定位为可复用组件。
-- fork/join 的真实运行器语义继续加强：父级上下文到多个 child 的一致 handoff 已开始收敛，child 失败后的 sibling abort 和冲突合并策略仍需专门实现。
+- fork/join 的真实运行器语义继续加强：父级上下文到多个 child 的一致 handoff、child 失败后的 sibling abort、join 前 handoff 冲突保护已开始收敛；复杂并行恢复仍需继续打磨。
 - Codex 原始 JSONL usage 提取。
 - Gemini CLI 参数和输出协议做真实版本校准。
 - generic CLI driver。
-- 真实 driver smoke 文档。
 - 录制 demo 和发布说明。
 
 ## 已知技术债
@@ -71,7 +70,7 @@
 - Commander 版本号应始终来自 `package.json`，避免发布版本漂移。
 - `PHASE_RETRY` 事件应在真实重试执行时进入事件日志和报告。
 - logger 使用同步 append，足够简单可靠，但并行大 payload 下还没有写队列。
-- fork/join 状态机测试已经覆盖；runner 已支持 fork child 共享 pre-fork handoff、join target 聚合 child handoff，但 sibling abort 与文件冲突语义仍未生产化。
+- fork/join 状态机测试已经覆盖；runner 已支持 fork child 共享 pre-fork handoff、join target 聚合 child handoff、sibling abort 和 join 前冲突保护，但复杂并行恢复仍未生产化。
 - dashboard 组件未成为默认运行 UI。
 - M1/M2 plan 文档保留原始计划格式，其中 checkbox 不代表当前真实完成状态。
 
@@ -82,9 +81,8 @@
 目标：把已有能力变成可公开试用的稳定 CLI。
 
 - 保持 `bun test`、`bun run typecheck`、`bun run dry-run:all` 绿色。
-- 为 fork/join runner 增加集成测试，覆盖 pre-fork handoff、join 聚合和失败路径。
-- 实现 child 失败时的 sibling abort。
-- 为 Codex / Gemini driver 增加真实 CLI smoke test 文档。
+- 为 fork/join runner 继续增加边界集成测试，覆盖更多 timeout、abort 和 conflict 组合。
+- 为 Codex / Gemini driver 校准真实 CLI 参数和 usage 提取。
 - 接入 Ink dashboard 或从文档里明确标注为组件能力。
 
 ### M2 发布化

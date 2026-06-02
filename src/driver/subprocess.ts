@@ -1,5 +1,18 @@
 import type { AgentEvent, AgentDriverFn, RunAgentOptions } from "./types.js";
 
+export interface UsageExtractionContext {
+  events: AgentEvent[];
+  rawLines: string[];
+  jsonLines: unknown[];
+}
+
+export interface ExtractedUsage {
+  tokensIn?: number;
+  tokensOut?: number;
+  costUsd?: number;
+  modelUsed?: string;
+}
+
 /** Configuration for creating a subprocess-based agent driver. */
 export interface SubprocessDriverConfig {
   /** The command to spawn (e.g. "codex", "gemini"). */
@@ -13,11 +26,7 @@ export interface SubprocessDriverConfig {
   /** Optional JSON-line parser for structured output (e.g. --json mode). */
   parseJsonLine?: (line: string) => AgentEvent | null;
   /** Optional extractor to derive usage metrics from collected events. */
-  extractUsage?: (events: AgentEvent[]) => {
-    tokensIn?: number;
-    tokensOut?: number;
-    costUsd?: number;
-  };
+  extractUsage?: (context: UsageExtractionContext) => ExtractedUsage;
 }
 
 /**
@@ -82,6 +91,8 @@ export function createSubprocessDriver(
 
     const collectedEvents: AgentEvent[] = [];
     const outputChunks: string[] = [];
+    const rawLines: string[] = [];
+    const jsonLines: unknown[] = [];
 
     // Stream stdout line-by-line
     try {
@@ -103,11 +114,14 @@ export function createSubprocessDriver(
           buffer = buffer.slice(newlineIdx + 1);
 
           if (line.length === 0) continue;
+          rawLines.push(line);
+          collectJsonLine(line, jsonLines);
 
           if (config.parseJsonLine) {
             const parsed = config.parseJsonLine(line);
             if (parsed) {
               collectedEvents.push(parsed);
+              if (parsed.type === "output") outputChunks.push(parsed.text);
               yield parsed;
             }
           } else {
@@ -121,10 +135,13 @@ export function createSubprocessDriver(
 
       // Handle any remaining content in the buffer (no trailing newline)
       if (buffer.length > 0) {
+        rawLines.push(buffer);
+        collectJsonLine(buffer, jsonLines);
         if (config.parseJsonLine) {
           const parsed = config.parseJsonLine(buffer);
           if (parsed) {
             collectedEvents.push(parsed);
+            if (parsed.type === "output") outputChunks.push(parsed.text);
             yield parsed;
           }
         } else {
@@ -154,13 +171,14 @@ export function createSubprocessDriver(
     }
 
     if (exitCode === 0) {
-      const usage = config.extractUsage?.(collectedEvents);
+      const usage = config.extractUsage?.({ events: collectedEvents, rawLines, jsonLines });
       yield {
         type: "complete",
         result: outputChunks.join("\n"),
         ...(usage?.tokensIn !== undefined && { tokensIn: usage.tokensIn }),
         ...(usage?.tokensOut !== undefined && { tokensOut: usage.tokensOut }),
         ...(usage?.costUsd !== undefined && { costUsd: usage.costUsd }),
+        ...(usage?.modelUsed !== undefined && { modelUsed: usage.modelUsed }),
       };
     } else {
       // Collect stderr for error reporting
@@ -178,4 +196,12 @@ export function createSubprocessDriver(
       };
     }
   };
+}
+
+function collectJsonLine(line: string, jsonLines: unknown[]): void {
+  try {
+    jsonLines.push(JSON.parse(line));
+  } catch {
+    // Non-JSON output is still valid for plain-text subprocess drivers.
+  }
 }

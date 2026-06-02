@@ -1,8 +1,10 @@
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { join } from "node:path";
 import { createActor, fromPromise, waitFor } from "xstate";
 import type { ParadigmConfig } from "./types.js";
 import { translateToMachine, type PhaseOutput } from "./machine.js";
 import { createWorktreeManager, cleanupStaleWorktrees } from "../sandbox/worktree.js";
-import { copyHandoff, generateDiffSummary } from "../sandbox/handoff.js";
+import { copyHandoff, generateDiffSummary, listHandoffChanges } from "../sandbox/handoff.js";
 import { assemblePrompt, readOutputFile } from "../sandbox/prompt.js";
 import { parseOutputFile } from "./output-parser.js";
 import { getDriver, validateDrivers } from "../driver/registry.js";
@@ -23,6 +25,11 @@ export interface RunResult {
 }
 
 const DEFAULT_TIMEOUT_S = 300; // 5 minutes
+
+interface HandoffConflict {
+  path: string;
+  phases: string[];
+}
 
 /**
  * Run a paradigm pipeline end-to-end.
@@ -71,6 +78,8 @@ export async function runPipeline(
     const forkByChild = new Map<string, string>();
     const forkInputs = new Map<string, { worktree?: string; output?: string }>();
     const joinSourcesByPhase = new Map<string, string[]>();
+    const joinForkByPhase = new Map<string, string>();
+    const forkControllers = new Map<string, Map<string, AbortController>>();
 
     for (const [phaseName, phase] of Object.entries(config.phases)) {
       if (phase.type === "fork" && phase.fork_phases && phase.next) {
@@ -78,6 +87,7 @@ export async function runPipeline(
           forkByChild.set(childName, phaseName);
         }
         joinSourcesByPhase.set(phase.next, phase.fork_phases);
+        joinForkByPhase.set(phase.next, phaseName);
       }
     }
 
@@ -94,6 +104,34 @@ export async function runPipeline(
 
         const startTime = Date.now();
         const isRetry = phaseWorktrees.has(phaseName);
+        const forkName = forkByChild.get(phaseName);
+        let failureEmitted = false;
+        let abortController: AbortController | undefined;
+
+        const emitPhaseFailed = (error: string, data: Record<string, unknown> = {}) => {
+          if (failureEmitted) return;
+          failureEmitted = true;
+          emit("PHASE_FAILED", phaseName, {
+            error,
+            duration_ms: Date.now() - startTime,
+            ...data,
+          });
+        };
+
+        const abortForkSiblings = (reason: string) => {
+          if (!forkName) return;
+          const controllers = forkControllers.get(forkName);
+          if (!controllers) return;
+
+          for (const [siblingName, siblingController] of controllers) {
+            if (siblingName !== phaseName && !siblingController.signal.aborted) {
+              siblingController.abort();
+              emit("AGENT_OUTPUT", siblingName, {
+                text: `[Aborted by fork sibling ${phaseName}: ${reason}]`,
+              });
+            }
+          }
+        };
 
         if (isRetry) {
           const retryCount = (retryCounts.get(phaseName) ?? 0) + 1;
@@ -109,12 +147,24 @@ export async function runPipeline(
         // 2. Resolve handoff sources. Fork children share the pre-fork snapshot,
         // and the join target receives every child branch instead of just the last
         // child that happened to finish.
-        const forkName = forkByChild.get(phaseName);
         const joinSources = joinSourcesByPhase.get(phaseName);
         const handoffSources: string[] = [];
         let sourceOutput = lastPhaseOutputContent ?? "";
 
         if (joinSources && joinSources.every((childName) => phaseWorktrees.has(childName))) {
+          const joinForkName = joinForkByPhase.get(phaseName);
+          const baseWorktree = joinForkName ? forkInputs.get(joinForkName)?.worktree : undefined;
+          const conflict = await findHandoffConflict(joinSources, phaseWorktrees, baseWorktree);
+          if (conflict) {
+            const error = `Fork handoff conflict before "${phaseName}": ${conflict.path} changed by ${conflict.phases.join(", ")}`;
+            emitPhaseFailed(error, {
+              reason: "fork_handoff_conflict",
+              conflict_path: conflict.path,
+              conflict_phases: conflict.phases,
+            });
+            throw new Error(error);
+          }
+
           for (const childName of joinSources) {
             const childWorktree = phaseWorktrees.get(childName);
             if (childWorktree) handoffSources.push(childWorktree);
@@ -174,7 +224,16 @@ export async function runPipeline(
 
         // 4. Run agent with timeout
         const timeoutMs = (phase.timeout_s ?? DEFAULT_TIMEOUT_S) * 1000;
-        const abortController = new AbortController();
+        abortController = new AbortController();
+
+        if (forkName) {
+          let controllers = forkControllers.get(forkName);
+          if (!controllers) {
+            controllers = new Map();
+            forkControllers.set(forkName, controllers);
+          }
+          controllers.set(phaseName, abortController);
+        }
 
         // Link parent abort signal
         if (options.abortSignal) {
@@ -184,6 +243,7 @@ export async function runPipeline(
         const timeoutId = setTimeout(() => {
           abortController.abort();
           emit("PHASE_TIMEOUT", phaseName, { timeout_s: phase.timeout_s ?? DEFAULT_TIMEOUT_S });
+          abortForkSiblings("timeout");
         }, timeoutMs);
 
         let completeEvent: Extract<import("../driver/types.js").AgentEvent, { type: "complete" }> | undefined;
@@ -212,8 +272,18 @@ export async function runPipeline(
                 throw event.error;
             }
           }
+        } catch (err) {
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          emitPhaseFailed(errorMsg, {
+            reason: abortController.signal.aborted ? "aborted" : "agent_error",
+          });
+          abortForkSiblings(errorMsg);
+          throw err;
         } finally {
           clearTimeout(timeoutId);
+          if (forkName) {
+            forkControllers.get(forkName)?.delete(phaseName);
+          }
         }
 
         // 5. Read and parse output_file
@@ -225,10 +295,8 @@ export async function runPipeline(
         const parsed = parseOutputFile(outputContent, phase.output_file);
 
         if (!parsed.success) {
-          emit("PHASE_FAILED", phaseName, {
-            error: parsed.error,
-            duration_ms: Date.now() - startTime,
-          });
+          emitPhaseFailed(parsed.error, { reason: "output_parse_error" });
+          abortForkSiblings(parsed.error);
           throw new Error(parsed.error);
         }
 
@@ -310,5 +378,66 @@ export async function runPipeline(
     };
   } finally {
     await worktreeManager.cleanup();
+  }
+}
+
+async function findHandoffConflict(
+  phaseNames: string[],
+  phaseWorktrees: Map<string, string>,
+  baseWorktree?: string
+): Promise<HandoffConflict | undefined> {
+  const ownersByPath = new Map<string, string[]>();
+
+  for (const phaseName of phaseNames) {
+    const worktree = phaseWorktrees.get(phaseName);
+    if (!worktree) continue;
+
+    const changes = await listHandoffChanges(worktree);
+    const touchedPaths = new Set([
+      ...changes.added,
+      ...changes.modified,
+      ...changes.deleted,
+    ]);
+
+    for (const path of touchedPaths) {
+      if (baseWorktree && pathMatchesBase(worktree, baseWorktree, path)) {
+        continue;
+      }
+
+      const owners = ownersByPath.get(path) ?? [];
+      owners.push(phaseName);
+      ownersByPath.set(path, owners);
+    }
+  }
+
+  for (const [path, owners] of ownersByPath) {
+    if (owners.length > 1) {
+      return { path, phases: owners };
+    }
+  }
+
+  return undefined;
+}
+
+function pathMatchesBase(worktree: string, baseWorktree: string, relativePath: string): boolean {
+  const currentPath = join(worktree, relativePath);
+  const basePath = join(baseWorktree, relativePath);
+  const currentExists = existsSync(currentPath);
+  const baseExists = existsSync(basePath);
+
+  if (!currentExists && !baseExists) return true;
+  if (currentExists !== baseExists) return false;
+
+  try {
+    const currentStat = statSync(currentPath);
+    const baseStat = statSync(basePath);
+
+    if (currentStat.isDirectory() || baseStat.isDirectory()) {
+      return currentStat.isDirectory() && baseStat.isDirectory();
+    }
+
+    return readFileSync(currentPath).equals(readFileSync(basePath));
+  } catch {
+    return false;
   }
 }

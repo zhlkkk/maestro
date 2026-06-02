@@ -194,6 +194,44 @@ describe("createSubprocessDriver", () => {
     }
   });
 
+  test("extractUsage receives raw and parsed JSON lines", async () => {
+    let receivedRawLines: string[] = [];
+    let receivedJsonLines: unknown[] = [];
+
+    const driver = createSubprocessDriver({
+      command: "/bin/sh",
+      buildArgs: () => [
+        "-c",
+        'printf \'{"type":"item.completed","usage":{"input_tokens":12}}\\nplain\\n\'',
+      ],
+      parseJsonLine: () => null,
+      extractUsage: ({ rawLines, jsonLines }) => {
+        receivedRawLines = rawLines;
+        receivedJsonLines = jsonLines;
+        return {
+          tokensIn: 12,
+          modelUsed: "gpt-test",
+        };
+      },
+    });
+
+    const events = await collectEvents(driver("ignored", "/tmp"));
+    const complete = events.find((event) => event.type === "complete");
+
+    expect(receivedRawLines).toEqual([
+      '{"type":"item.completed","usage":{"input_tokens":12}}',
+      "plain",
+    ]);
+    expect(receivedJsonLines).toEqual([
+      { type: "item.completed", usage: { input_tokens: 12 } },
+    ]);
+    expect(complete).toMatchObject({
+      type: "complete",
+      tokensIn: 12,
+      modelUsed: "gpt-test",
+    });
+  });
+
   test("buildArgs receives prompt, workdir, and options", async () => {
     let receivedPrompt = "";
     let receivedWorkdir = "";

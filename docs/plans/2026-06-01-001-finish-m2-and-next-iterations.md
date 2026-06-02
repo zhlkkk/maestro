@@ -28,6 +28,7 @@ Out of scope for this M2 finish pass:
 
 - Full production-grade fork child sibling abort.
 - Conflict-aware merge strategy for fork children editing the same files.
+- Automatic conflict resolution for fork children editing the same files.
 - Hosted web UI.
 - Deep driver protocol calibration against every CLI version.
 
@@ -97,13 +98,16 @@ Verification:
 Files:
 
 - Modify: `src/engine/runner.ts`
-- Follow-up test target: `tests/engine/runner.test.ts`
+- Modify: `src/sandbox/handoff.ts`
+- Test: `tests/engine/runner.test.ts`
 
 Approach:
 
 - Emit `PHASE_RETRY` when a phase re-enters an existing worktree.
 - Snapshot pre-fork worktree/output for every fork child so children do not inherit sibling output accidentally.
 - Aggregate fork child handoffs and outputs into the join target.
+- Abort sibling fork children when one child fails or times out.
+- Detect join-time handoff conflicts when multiple children changed the same path and fail fast with event details.
 
 Verification:
 
@@ -116,6 +120,8 @@ Files:
 
 - Modify: `docs/roadmap.md`
 - Create: `docs/release-checklist.md`
+- Create: `docs/driver-smoke.md`
+- Create: `docs/examples/sample-run-report.md`
 - Create: `docs/plans/2026-06-01-001-finish-m2-and-next-iterations.md`
 
 Approach:
@@ -123,6 +129,7 @@ Approach:
 - Reframe M2 as a public beta release candidate.
 - Move unresolved production-grade parallel semantics into M2.x/M3 follow-up.
 - Define the next iteration tracks and acceptance gates.
+- Record real-driver smoke expectations and provide a sample report shape for release notes.
 
 Verification:
 
@@ -136,9 +143,8 @@ Verification:
 Goal: reduce support risk after the first public beta.
 
 - Add `tests/engine/runner.test.ts` integration coverage for retry events, fork child handoff, join aggregation, and failure paths.
-- Implement fork sibling abort with shared abort controllers or parent-level cancellation.
-- Document real Codex and Gemini CLI smoke tests, including installed version assumptions.
-- Add release checklist and sample run report.
+- Expand fork timeout and conflict regression coverage as real workflows reveal edge cases.
+- Calibrate real Codex and Gemini CLI usage extraction.
 - Decide whether `run` should default to Ink dashboard or keep console output for v0.2.x.
 
 Exit criteria:
