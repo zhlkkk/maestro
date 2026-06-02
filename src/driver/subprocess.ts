@@ -71,9 +71,13 @@ export function createSubprocessDriver(
     // Wire up abort handling: SIGTERM → 5 s grace → SIGKILL
     let aborted = false;
     let killTimerId: ReturnType<typeof setTimeout> | undefined;
+    let stdoutReader: { cancel: () => Promise<void> } | undefined;
     const onAbort = () => {
       aborted = true;
       proc.kill("SIGTERM");
+      void stdoutReader?.cancel().catch(() => {
+        // The stream may already be closed or errored.
+      });
       killTimerId = setTimeout(() => {
         try {
           proc.kill("SIGKILL");
@@ -98,6 +102,7 @@ export function createSubprocessDriver(
     try {
       const stdout = proc.stdout as ReadableStream<Uint8Array>;
       const reader = stdout.getReader();
+      stdoutReader = reader;
       const decoder = new TextDecoder();
       let buffer = "";
 
